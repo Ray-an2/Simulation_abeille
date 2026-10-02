@@ -1,0 +1,22 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://d137osfsks6c"
+path="res://.godot/imported/Teapot.obj-2a580b90b896e2a46cdc6cf37964a258.mesh"
+
+[deps]
+
+files=["res://.godot/imported/Teapot.obj-2a580b90b896e2a46cdc6cf37964a258.mesh"]
+
+source_file="res://demo_sky3d/assets/meshes/Teapot.obj"
+dest_files=["res://.godot/imported/Teapot.obj-2a580b90b896e2a46cdc6cf37964a258.mesh", "res://.godot/imported/Teapot.obj-2a580b90b896e2a46cdc6cf37964a258.mesh"]
+
+[params]
+
+generate_tangents=true
+scale_mesh=Vector3(0.5, 0.5, 0.5)
+offset_mesh=Vector3(0, 0, 0)
+optimize_mesh=true
+force_disable_mesh_compression=false
