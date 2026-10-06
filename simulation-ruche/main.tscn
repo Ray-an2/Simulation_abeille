@@ -1,4 +1,4 @@
-[gd_scene load_steps=36 format=3 uid="uid://b7gbsi53bjf4e"]
+[gd_scene load_steps=39 format=3 uid="uid://b7gbsi53bjf4e"]
 
 [ext_resource type="Shader" path="res://shaders/cloudy_sky.gdshader" id="1_5ekmi"]
 [ext_resource type="Texture2D" uid="uid://ddprscrpsofah" path="res://demo/assets/textures/ground037_alb_ht.png" id="1_waug6"]
@@ -17,6 +17,9 @@
 [ext_resource type="PackedScene" uid="uid://csofi7fvyjxqg" path="res://assets/stylized_nature/Mushroom_Common.gltf" id="15_m3lpi"]
 [ext_resource type="PackedScene" uid="uid://cm5fucmb8elhl" path="res://assets/stylized_nature/CommonTree_1.gltf" id="16_p2bne"]
 [ext_resource type="PackedScene" uid="uid://d85ctoo5by6q" path="res://assets/stylized_nature/Mushroom_Laetiporus.gltf" id="17_lywrg"]
+[ext_resource type="Script" path="res://scripts/hive/hive.gd" id="18_aaguw"]
+[ext_resource type="PackedScene" uid="uid://1pblv7ehvdsi" path="res://assets/bee/bee.tscn" id="18_qss4f"]
+[ext_resource type="Script" path="res://scripts/bee/bee.gd" id="19_pm0jq"]
 
 [sub_resource type="FastNoiseLite" id="FastNoiseLite_p5b0l"]
 fractal_lacunarity = 3.0
@@ -156,7 +159,8 @@ texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_
 [node name="Main" type="Node3D"]
 
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(0.774745, -0.213167, 0.595256, -0.00591131, 0.93897, 0.343948, -0.632246, -0.26999, 0.726202, 0.722893, 0.556679, 0.342687)
+transform = Transform3D(0.621987, -0.336927, 0.706833, -0.060193, 0.879447, 0.472175, -0.780711, -0.336233, 0.526724, 0.650874, 0.293923, 0.0449493)
+near = 0.01
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_xhl03")
@@ -237,7 +241,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.85493, -1.19209e-07, 2.309
 transform = Transform3D(-4.37114e-08, 0, -1, 0, 1, 0, 1, 0, -4.37114e-08, 0.352951, 0.207553, 0.0172058)
 
 [node name="Hive" parent="Simulation" instance=ExtResource("5_j5y46")]
+script = ExtResource("18_aaguw")
 
 [node name="Bees" type="Node3D" parent="Simulation"]
+
+[node name="Bee" parent="Simulation/Bees" instance=ExtResource("18_qss4f")]
+transform = Transform3D(-4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0.00289233, 0.0550701, -0.268351)
+script = ExtResource("19_pm0jq")
 
 [node name="Flowers" type="Node3D" parent="Simulation"]
