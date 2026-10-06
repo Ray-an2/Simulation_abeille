@@ -29,6 +29,25 @@ animation/fps=30
 animation/trimming=false
 animation/remove_immutable_tracks=true
 import_script/path=""
-_subresources={}
+_subresources={
+"materials": {
+"M_Frame_Comb": {
+"use_external/enabled": true,
+"use_external/path": "res://assets/hive/materials/M_Frame_Comb.tres"
+},
+"M_Frame_Wood": {
+"use_external/enabled": true,
+"use_external/path": "res://assets/hive/materials/M_Frame_Wood.tres"
+},
+"M_Hive_Glass": {
+"use_external/enabled": true,
+"use_external/path": "res://assets/hive/materials/M_Hive_Glass.tres"
+},
+"M_Hive_Wood": {
+"use_external/enabled": true,
+"use_external/path": "res://assets/hive/materials/M_Hive_Wood.tres"
+}
+}
+}
 gltf/naming_version=1
 gltf/embedded_image_handling=1
