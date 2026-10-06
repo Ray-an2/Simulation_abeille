@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cphokbuqtnpxc"
-path.s3tc="res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.s3tc.ctex"
-path.etc2="res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.etc2.ctex"
+uid="uid://c2pagjm0uyxpn"
+path.s3tc="res://.godot/imported/Bark_DeadTree.png-9b941064a778f118a77a4da6c39b715f.s3tc.ctex"
+path.etc2="res://.godot/imported/Bark_DeadTree.png-9b941064a778f118a77a4da6c39b715f.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/single_flower__rose_red/textures/Material_9.002_baseColor.png"
-dest_files=["res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.s3tc.ctex", "res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.etc2.ctex"]
+source_file="res://assets/stylized_nature/Bark_DeadTree.png"
+dest_files=["res://.godot/imported/Bark_DeadTree.png-9b941064a778f118a77a4da6c39b715f.s3tc.ctex", "res://.godot/imported/Bark_DeadTree.png-9b941064a778f118a77a4da6c39b715f.etc2.ctex"]
 
 [params]
 

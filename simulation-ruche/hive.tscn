@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://duts0r0gjom31"]
+
+[ext_resource type="PackedScene" uid="uid://b0y6vo6aalspq" path="res://assets/hive/hive.glb" id="1_52cir"]
+
+[node name="Hive" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_52cir")]
+
+[node name="LandingMarker" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000530694, 0.0614414, -0.285695)
+
+[node name="EntranceMarker" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000530694, 0.0614414, -0.252038)
+
+[node name="DanceMarker" type="Marker3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.015, 0.232, 0)

@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cphokbuqtnpxc"
-path.s3tc="res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.s3tc.ctex"
-path.etc2="res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.etc2.ctex"
+uid="uid://bdh6o105sqfll"
+path.s3tc="res://.godot/imported/Leaf_Pine.png-71ee8e1170cbeb1aeb004b18c9e7372e.s3tc.ctex"
+path.etc2="res://.godot/imported/Leaf_Pine.png-71ee8e1170cbeb1aeb004b18c9e7372e.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/single_flower__rose_red/textures/Material_9.002_baseColor.png"
-dest_files=["res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.s3tc.ctex", "res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.etc2.ctex"]
+source_file="res://assets/stylized_nature/Leaf_Pine.png"
+dest_files=["res://.godot/imported/Leaf_Pine.png-71ee8e1170cbeb1aeb004b18c9e7372e.s3tc.ctex", "res://.godot/imported/Leaf_Pine.png-71ee8e1170cbeb1aeb004b18c9e7372e.etc2.ctex"]
 
 [params]
 

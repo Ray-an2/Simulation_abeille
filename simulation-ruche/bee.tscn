@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://1pblv7ehvdsi"]
+
+[ext_resource type="PackedScene" uid="uid://bqr2r6el01003" path="res://assets/bee/bee.gltf" id="1_h63oj"]
+
+[node name="Bee" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_h63oj")]
+transform = Transform3D(0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0)

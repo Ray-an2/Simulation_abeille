@@ -1,0 +1,11 @@
+Model Information:
+* title:	Animated Bee
+* source:	https://sketchfab.com/3d-models/animated-bee-1cb5298495d240229d8668e5909a344c
+* author:	sikoro (https://sketchfab.com/sikorodz05)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Animated Bee" (https://sketchfab.com/3d-models/animated-bee-1cb5298495d240229d8668e5909a344c) by sikoro (https://sketchfab.com/sikorodz05) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

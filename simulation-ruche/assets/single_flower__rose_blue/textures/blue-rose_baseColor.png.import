@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dt1hte74slavc"
 path.s3tc="res://.godot/imported/blue-rose_baseColor.png-7c7ace08d57a7e7677b52a733b433c00.s3tc.ctex"
+path.etc2="res://.godot/imported/blue-rose_baseColor.png-7c7ace08d57a7e7677b52a733b433c00.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/single_flower__rose_blue/textures/blue-rose_baseColor.png"
-dest_files=["res://.godot/imported/blue-rose_baseColor.png-7c7ace08d57a7e7677b52a733b433c00.s3tc.ctex"]
+dest_files=["res://.godot/imported/blue-rose_baseColor.png-7c7ace08d57a7e7677b52a733b433c00.s3tc.ctex", "res://.godot/imported/blue-rose_baseColor.png-7c7ace08d57a7e7677b52a733b433c00.etc2.ctex"]
 
 [params]
 

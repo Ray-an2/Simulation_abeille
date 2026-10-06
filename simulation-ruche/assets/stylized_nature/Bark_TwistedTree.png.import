@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cphokbuqtnpxc"
-path.s3tc="res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.s3tc.ctex"
-path.etc2="res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.etc2.ctex"
+uid="uid://bs7inwpsjustp"
+path.s3tc="res://.godot/imported/Bark_TwistedTree.png-056a7fe0a0330b514239dfe41d1236af.s3tc.ctex"
+path.etc2="res://.godot/imported/Bark_TwistedTree.png-056a7fe0a0330b514239dfe41d1236af.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/single_flower__rose_red/textures/Material_9.002_baseColor.png"
-dest_files=["res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.s3tc.ctex", "res://.godot/imported/Material_9.002_baseColor.png-81b505aed88efc1de9a8fcdfb2a0e64f.etc2.ctex"]
+source_file="res://assets/stylized_nature/Bark_TwistedTree.png"
+dest_files=["res://.godot/imported/Bark_TwistedTree.png-056a7fe0a0330b514239dfe41d1236af.s3tc.ctex", "res://.godot/imported/Bark_TwistedTree.png-056a7fe0a0330b514239dfe41d1236af.etc2.ctex"]
 
 [params]
 
