@@ -2,7 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://bme2cffeeop0p" path="res://assets/hive/textures/others_0007_color_2k.jpg" id="1_m4i3c"]
 [ext_resource type="Texture2D" uid="uid://6sgnj12yj61t" path="res://assets/hive/textures/others_0007_ao_2k.jpg" id="2_igbwo"]
-[ext_resource type="Texture2D" uid="uid://ru25iabhhscj" path="res://assets/hive/hive_1.png" id="2_ufy4t"]
+[ext_resource type="Texture2D" uid="uid://ru25iabhhscj" path="res://assets/hive/textures/hive_1.png" id="2_ufy4t"]
 [ext_resource type="Texture2D" uid="uid://uh4br0fygsl6" path="res://assets/hive/textures/others_0007_height_2k.png" id="3_e0k0o"]
 [ext_resource type="Texture2D" uid="uid://dmdbbrjst0slg" path="res://assets/hive/textures/others_0007_normal_opengl_2k.png" id="5_txw15"]
 [ext_resource type="Texture2D" uid="uid://b6xnlpwcnhvcc" path="res://assets/hive/textures/others_0007_roughness_2k.jpg" id="6_mb8h8"]
