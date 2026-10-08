@@ -17,4 +17,3 @@ func update(delta: float) -> BeeState:
 		bee.look_at(direction)
 		bee.position += direction * bee.simulation.fly_speed * delta
 	return null
-
