@@ -7,27 +7,54 @@ class_name IdleState extends HiveState
 # Constantes
 # =============================================================================
 
-## Distance maximale (m) d'un pas sur le cadre, sur chaque axe du plan.
-## Des petits pas autour de la position courante donnent une marche plus naturelle
-## que des traversées complètes du cadre.
-const STEP_RADIUS := 0.03
+## Durée (s) d'une phase de marche, tirée au hasard dans cet intervalle.
+const WALK_MIN := 0.5
+const WALK_MAX := 5
 
-## Durée (s) de la pause entre deux pas, tirée au hasard dans cet intervalle.
+## Durée (s) d'une pause, tirée au hasard dans cet intervalle.
 const PAUSE_MIN := 0.5
 const PAUSE_MAX := 3.0
 
-## Distance (m) en dessous de laquelle la cible est considérée comme atteinte.
-const ARRIVAL_RADIUS := 0.002
+## Facteur appliqué à walk_speed, tiré au hasard à chaque phase de marche.
+const SPEED_FACTOR_MIN := 0.5
+const SPEED_FACTOR_MAX := 1.5
+
+## Vitesse de virage maximale (rad/s), dans un sens ou dans l'autre.
+const MAX_TURN_RATE := 3.0
+
+## Intervalle (s) entre deux changements de vitesse de virage : plus il est court,
+## plus la trajectoire zigzague.
+const TURN_CHANGE_MIN := 0.2
+const TURN_CHANGE_MAX := 0.8
+
+## Distance (m) du point visé devant l'abeille. Doit rester supérieure au pas
+## parcouru en une frame, sinon l'abeille s'arrêterait sur ce point.
+const LOOK_AHEAD := 0.01
+
+## Vitesse (1/s) à laquelle le cap se réoriente vers le centre près d'un bord.
+const EDGE_STEER := 5.0
 
 # =============================================================================
 # État interne
 # =============================================================================
 
-## Point du cadre vers lequel l'abeille marche actuellement.
-var _target: Vector3
+## true pendant une phase de marche, false pendant une pause.
+var _walking := false
 
-## Temps de pause restant (s). Tant qu'il est positif, l'abeille ne bouge pas.
-var _pause := 0.0
+## Temps restant (s) dans la phase en cours (marche ou pause).
+var _phase_time := 0.0
+
+## Direction de marche, toujours dans le plan du cadre (unitaire).
+var _heading := Vector3.ZERO
+
+## Vitesse de virage actuelle (rad/s) : positive ou négative selon le sens.
+var _turn_rate := 0.0
+
+## Temps restant (s) avant de tirer une nouvelle vitesse de virage.
+var _turn_change_time := 0.0
+
+## Facteur de vitesse de la phase de marche en cours.
+var _speed_factor := 1.0
 
 # =============================================================================
 # Méthodes de l'état
@@ -35,10 +62,12 @@ var _pause := 0.0
 
 func enter() -> void:
 	bee.play_animation(&"_bee_idle")
-	# Pause initiale aléatoire : évite que toutes les abeilles démarrent leur premier pas
-	# en même temps au lancement de la simulation
-	_pause = randf_range(0.0, PAUSE_MAX)
-	_pick_next_target()
+	# Cap initial : l'avant de l'abeille (+Z), projeté dans le plan du cadre
+	var normal := bee.hive.get_comb_normal()
+	_heading = bee.global_basis.z.slide(normal).normalized()
+	# Commence par une pause de durée aléatoire : évite que toutes les abeilles
+	# démarrent en même temps au lancement de la simulation
+	_start_pause(randf_range(0.0, PAUSE_MAX))
 
 func update(delta: float) -> BeeState:
 	# TODO : détecter une danse à proximité (→ WATCH)
@@ -54,21 +83,50 @@ func update(delta: float) -> BeeState:
 # Utilitaires internes
 # =============================================================================
 
-## Fait avancer l'abeille vers sa cible, ou décompte la pause en cours.
-## Une fois la cible atteinte, démarre une nouvelle pause et choisit le pas suivant.
+## Fait progresser la phase en cours, et bascule entre marche et pause à son terme.
 func _wander(delta: float) -> void:
-	if _pause > 0.0:
-		_pause -= delta
+	_phase_time -= delta
+	if _phase_time <= 0.0:
+		if _walking:
+			_start_pause(randf_range(PAUSE_MIN, PAUSE_MAX))
+		else:
+			_start_walk()
 		return
 
-	# La normale du cadre sert de vecteur haut : l'abeille reste à plat sur la cire
-	bee.walk_towards(_target, delta, bee.hive.get_comb_normal())
+	if _walking:
+		_walk_step(delta)
 
-	if bee.is_near(_target, ARRIVAL_RADIUS):
-		_pause = randf_range(PAUSE_MIN, PAUSE_MAX)
-		_pick_next_target()
+## Avance d'une frame en suivant le cap, qui dérive selon la vitesse de virage.
+func _walk_step(delta: float) -> void:
+	var normal := bee.hive.get_comb_normal()
 
-## Choisit le prochain point de la marche, autour de la position actuelle.
-## La ruche se charge de le borner au cadre et de le ramener dans son plan.
-func _pick_next_target() -> void:
-	_target = bee.hive.get_comb_point_near(bee.global_position, STEP_RADIUS)
+	# Nouvelle vitesse de virage de temps en temps : donne une trajectoire sinueuse
+	_turn_change_time -= delta
+	if _turn_change_time <= 0.0:
+		_turn_rate = randf_range(-MAX_TURN_RATE, MAX_TURN_RATE)
+		_turn_change_time = randf_range(TURN_CHANGE_MIN, TURN_CHANGE_MAX)
+
+	# Rotation du cap autour de la normale : il reste dans le plan du cadre
+	_heading = _heading.rotated(normal, _turn_rate * delta)
+
+	# Près d'un bord, le point visé sort du cadre : on réoriente progressivement
+	# le cap vers le centre plutôt que de rester bloqué contre le bord
+	var ahead := bee.global_position + _heading * LOOK_AHEAD
+	var clamped := bee.hive.clamp_to_comb(ahead)
+	if not ahead.is_equal_approx(clamped):
+		var to_center := (bee.hive.get_comb_center() - bee.global_position).slide(normal).normalized()
+		_heading = _heading.lerp(to_center, EDGE_STEER * delta).normalized()
+
+	bee.walk_towards(clamped, delta, normal, _speed_factor)
+
+## Démarre une phase de marche avec une durée, une vitesse et un virage aléatoires.
+func _start_walk() -> void:
+	_walking = true
+	_phase_time = randf_range(WALK_MIN, WALK_MAX)
+	_speed_factor = randf_range(SPEED_FACTOR_MIN, SPEED_FACTOR_MAX)
+	_turn_change_time = 0.0   # force un nouveau virage dès la première frame
+
+## Démarre une pause de [param duration] secondes.
+func _start_pause(duration: float) -> void:
+	_walking = false
+	_phase_time = duration

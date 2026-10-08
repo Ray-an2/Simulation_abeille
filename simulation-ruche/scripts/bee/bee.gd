@@ -89,12 +89,13 @@ func change_state(next: BeeState) -> void:
 func fly_towards(target: Vector3, delta: float) -> void:
 	_move_towards(target, simulation.fly_speed * delta, Vector3.UP, delta)
 
-## Marche vers [param target] à la vitesse [member Simulation.walk_speed].
+## Marche vers [param target] à la vitesse [member Simulation.walk_speed],
+## multipliée par [param speed_factor].
 ## Réservé aux états du super-état Ruche.
 ## [param up] est la normale de la surface parcourue : passer
 ## [method Hive.get_comb_normal] pour que l'abeille reste à plat sur le cadre.
-func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP) -> void:
-	_move_towards(target, simulation.walk_speed * delta, up, delta)
+func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP, speed_factor: float = 1.0) -> void:
+	_move_towards(target, simulation.walk_speed * speed_factor * delta, up, delta)
 	
 ## Renvoie [code]true[/code] si l'abeille est à moins de [param radius] de [param target].
 ## Sert de test d'arrivée pour GO, RETURN, etc.

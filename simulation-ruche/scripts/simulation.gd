@@ -16,7 +16,7 @@ class_name Simulation extends Node3D
 @export_group("Population")
 
 ## Nombre d'abeilles créées au lancement.
-@export_range(20, 200) var bee_count: int = 10
+@export_range(20, 200) var bee_count: int = 20
 
 @export_group("Comportement")
 
@@ -71,11 +71,18 @@ var flowers: Array[Flower] = []
 
 ## Crée [member bee_count] abeilles et leur injecte la ruche et la simulation.
 func _ready() -> void:
+	# La ruche doit avoir calculé la zone du cadre avant qu'on y place les abeilles
+	if not hive.is_node_ready():
+		await hive.ready
 	flowers.assign(get_tree().get_nodes_in_group(&"flowers"))
 	for i in bee_count:
 		var bee: Bee = bee_scene.instantiate()
 		bee.name = "Bee_%03d" % (i + 1)   # Bee_001, Bee_002...
 		bee.hive = hive
 		bee.simulation = self
-		bees_container.add_child(bee)
-		bee.global_transform = hive.get_random_spawn_transform()	# Position d'apparition
+		# Position fixée AVANT add_child : add_child déclenche _ready() puis IdleState.enter(),
+		# qui a besoin de la vraie position pour choisir son premier pas.
+		# global_transform n'est pas utilisable hors de l'arbre : on passe par le repère
+		# local du conteneur.
+		bee.transform = bees_container.global_transform.affine_inverse() * hive.get_random_spawn_transform()
+		bees_container.add_child(bee)	# Position d'apparition

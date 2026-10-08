@@ -123,15 +123,26 @@ func _compute_comb_extent() -> void:
 func get_comb_normal() -> Vector3:
 	return _spawn.global_basis.orthonormalized().y
 	
+## Centre de la zone de déambulation, en coordonnées globales.
+## Sert de point de repli aux abeilles qui arrivent au bord du cadre.
+func get_comb_center() -> Vector3:
+	return _spawn.global_transform * _comb_center_local
+
 ## Point du cadre à au plus [param radius] de [param from], borné au rectangle
 ## et ramené dans le plan de SpawnMarker.
 func get_comb_point_near(from: Vector3, radius: float) -> Vector3:
-	var local := _spawn.global_transform.affine_inverse() * from
-	local.x += randf_range(-radius, radius)
-	local.z += randf_range(-radius, radius)
+	var b := _spawn.global_basis.orthonormalized()
+	# Décalage aléatoire dans le plan du cadre (axes X et Z du marqueur)
+	var offset := b.x * randf_range(-radius, radius) + b.z * randf_range(-radius, radius)
+	return clamp_to_comb(from + offset)
+	
+## Ramène [param point] dans le rectangle du cadre et dans son plan.
+## Renvoie le point inchangé s'il y est déjà.
+func clamp_to_comb(point: Vector3) -> Vector3:
+	var local := _spawn.global_transform.affine_inverse() * point
 	local.x = clampf(local.x, _comb_center_local.x - spawn_extent.x, _comb_center_local.x + spawn_extent.x)
 	local.z = clampf(local.z, _comb_center_local.z - spawn_extent.y, _comb_center_local.z + spawn_extent.y)
-	local.y = 0.0   # collé à la surface du cadre
+	local.y = 0.0   # collé à la surface du cadre (hauteur de SpawnMarker)
 	return _spawn.global_transform * local
 	
 # =============================================================================
