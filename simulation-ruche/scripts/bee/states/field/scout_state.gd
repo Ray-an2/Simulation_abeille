@@ -35,7 +35,7 @@ var _target: Vector3    # position d'atterrissage de la fleur visée
 # ---------------------------------------------------------------------------
 ## Reset du timer à chaque entrée dans l'état + cap initial.
 func enter() -> void:
-	bee.play_animation(&"_bee_take_off")
+	#bee.play_animation(&"_bee_take_off")
 	bee.play_animation(&"_bee_hover")
 	_remaining = SCOUT_DURATION
 	_flower = null
