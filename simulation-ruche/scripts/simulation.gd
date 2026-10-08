@@ -51,7 +51,7 @@ class_name Simulation extends Node3D
 @export_group("Déplacement")
 
 ## Vitesse de vol à l'extérieur (unités/s). À ajuster à l'échelle du terrain.
-@export var fly_speed: float = 3.0
+@export var fly_speed: float = 1.0
 
 ## Vitesse de marche sur le rayon (unités/s). À ajuster à l'échelle de la ruche.
 @export var walk_speed: float = 0.2
