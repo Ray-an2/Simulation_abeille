@@ -12,6 +12,13 @@ var hive: Hive
 var simulation: Simulation
 
 # =============================================================================
+# Nœuds de la scène
+# =============================================================================
+
+## Lecteur d'animations du modèle glTF (hover, idle, take_off_and_land).
+@onready var _anim: AnimationPlayer = $Model/AnimationPlayer
+
+# =============================================================================
 # Données partagées entre les états
 # =============================================================================
 
@@ -53,6 +60,7 @@ func _ready() -> void:
 		% [name, hive, simulation])
 	idle = IdleState.new(self)
 	scout = ScoutState.new(self)
+	return_home = ReturnState.new(self)
 	change_state(idle)
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
@@ -80,6 +88,14 @@ func change_state(next: BeeState) -> void:
 func fly_towards(target: Vector3, delta: float) -> void:
 	_move_towards(target, simulation.fly_speed * delta)
 
+## Joue [param anim_name] depuis un point aléatoire, pour que les abeilles
+## ne battent pas des ailes en parfaite synchronisation.
+func play_animation(anim_name: StringName) -> void:
+	if _anim.current_animation == anim_name:
+		return
+	_anim.play(anim_name)
+	if _anim.get_animation(anim_name).loop_mode != Animation.LOOP_NONE:
+		_anim.seek(randf() * _anim.current_animation_length, true)
 
 ## Marche sur le rayon vers [param target] à la vitesse [member Simulation.walk_speed].
 ## Réservé aux états du super-état Ruche.

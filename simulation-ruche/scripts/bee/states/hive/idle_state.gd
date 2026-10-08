@@ -6,3 +6,6 @@ func update(delta: float) -> BeeState:
 	if randf() < bee.simulation.p_scout * delta:
 		return bee.scout
 	return null
+
+func enter() -> void:
+	bee.play_animation(&"_bee_idle")
