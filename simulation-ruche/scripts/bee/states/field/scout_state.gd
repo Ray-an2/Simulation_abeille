@@ -3,9 +3,11 @@ class_name ScoutState extends FieldState
 ## Temps restant avant d'abandonner et de rentrer.
 var _remaining: float
 
+## Reset du timer à chaque entrée dans l'état
 func enter() -> void:
 	_remaining=20.0
 
+## Fonction de déplacement et de recherche de fleur(pas encore implémentée)
 func update(delta: float) -> BeeState:
 	_remaining -= delta
 	if _remaining <= 0.0:
