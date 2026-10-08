@@ -16,7 +16,7 @@ class_name Simulation extends Node3D
 @export_group("Population")
 
 ## Nombre d'abeilles créées au lancement.
-@export_range(20, 200) var bee_count: int = 1
+@export_range(20, 200) var bee_count: int = 5
 
 @export_group("Comportement")
 
@@ -64,4 +64,4 @@ func _ready() -> void:
 		bee.hive = hive
 		bee.simulation = self
 		bees_container.add_child(bee)
-		bee.global_transform = hive.get_spawn_transform()	# Position d'apparition
+		bee.global_transform = hive.get_random_spawn_transform()	# Position d'apparition
