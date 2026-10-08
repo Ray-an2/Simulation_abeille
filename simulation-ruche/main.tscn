@@ -158,7 +158,8 @@ texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_
 [node name="Main" type="Node3D"]
 
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(0.601183, -0.496576, 0.626093, 0.0471273, 0.804154, 0.59255, -0.797721, -0.326725, 0.506846, 0.659059, 0.311906, 0.0767495)
+transform = Transform3D(0.369727, 0.398993, 0.839111, -0.0437682, 0.909581, -0.413216, -0.928109, 0.116051, 0.35376, 2.18108, 0.990402, -0.696732)
+fov = 129.986
 near = 0.01
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
