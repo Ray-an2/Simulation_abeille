@@ -87,14 +87,14 @@ func change_state(next: BeeState) -> void:
 ## À appeler à chaque update() tant que la cible n'est pas atteinte.
 ## Le haut de l'abeille reste aligné sur la verticale du monde.
 func fly_towards(target: Vector3, delta: float) -> void:
-	_move_towards(target, simulation.fly_speed * delta, Vector3.UP)
+	_move_towards(target, simulation.fly_speed * delta, Vector3.UP, delta)
 
 ## Marche vers [param target] à la vitesse [member Simulation.walk_speed].
 ## Réservé aux états du super-état Ruche.
 ## [param up] est la normale de la surface parcourue : passer
 ## [method Hive.get_comb_normal] pour que l'abeille reste à plat sur le cadre.
 func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP) -> void:
-	_move_towards(target, simulation.walk_speed * delta, up)
+	_move_towards(target, simulation.walk_speed * delta, up, delta)
 	
 ## Renvoie [code]true[/code] si l'abeille est à moins de [param radius] de [param target].
 ## Sert de test d'arrivée pour GO, RETURN, etc.
@@ -119,25 +119,36 @@ func play_animation(anim_name: StringName) -> void:
 # Utilitaires internes
 # =============================================================================
 	
-## Avance d'au plus [param step] vers [param target], en s'orientant dans la direction
-## du mouvement avec [param up] comme vecteur haut.
-## [param step] est déjà multiplié par delta.
-func _move_towards(target: Vector3, step: float, up: Vector3) -> void:
+## Avance d'au plus [param step] vers [param target], en s'orientant progressivement
+## dans la direction du mouvement avec [param up] comme vecteur haut.
+## [param step] est déjà multiplié par delta ; [param delta] sert à la rotation.
+func _move_towards(target: Vector3, step: float, up: Vector3, delta: float) -> void:
 	var to_target := target - global_position
 	# Déjà sur la cible : on ne bouge pas, et on évite un look_at sur un vecteur nul
 	if to_target.length_squared() < 0.000001:
 		return
-	_face(to_target, up)
+	_face(to_target, up, delta)
 	# move_toward ne dépasse jamais la cible : pas d'oscillation à l'arrivée
 	global_position = global_position.move_toward(target, step)
 	
-## Oriente l'abeille vers [param direction] avec [param up] comme vecteur haut
-## (avant du modèle sur +Z, convention glTF).
-func _face(direction: Vector3, up: Vector3) -> void:
+## Tourne progressivement l'abeille vers [param direction], avec [param up] comme vecteur
+## haut (avant du modèle sur +Z, convention glTF).
+func _face(direction: Vector3, up: Vector3, delta: float) -> void:
 	var dir := direction.normalized()
-	# look_at échoue si la direction est parallèle au vecteur haut
+	# Basis.looking_at échoue si la direction est parallèle au vecteur haut
 	# (vol vertical, ou cible hors du plan du cadre) : on prend alors un vecteur de secours
 	if absf(dir.dot(up)) > 0.99:
 		up = Vector3.FORWARD if absf(dir.dot(Vector3.UP)) > 0.99 else Vector3.UP
-	# true : utilise +Z comme avant du modèle au lieu de -Z (convention Godot)
-	look_at(global_position + dir, up, true)
+
+	# Orientation visée. true : +Z comme avant du modèle au lieu de -Z (convention Godot)
+	var target_rot := Basis.looking_at(dir, up, true).get_rotation_quaternion()
+	var current_rot := global_basis.get_rotation_quaternion()
+
+	# Interpolation indépendante du framerate : 1 - exp(-k·delta) donne la même
+	# vitesse de rotation à 30 ou à 144 images par seconde
+	var weight := 1.0 - exp(-simulation.turn_speed * delta)
+
+	# On travaille en quaternions (rotation seule), puis on réapplique l'échelle
+	# du nœud pour ne pas la perdre si l'abeille est mise à l'échelle dans bee.tscn
+	var s := global_basis.get_scale()
+	global_basis = Basis(current_rot.slerp(target_rot, weight)) * Basis.from_scale(s)

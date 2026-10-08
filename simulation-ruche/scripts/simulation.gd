@@ -54,7 +54,11 @@ class_name Simulation extends Node3D
 @export var fly_speed: float = 0.05
 
 ## Vitesse de marche sur le rayon (unités/s). À ajuster à l'échelle de la ruche.
-@export var walk_speed: float = 0.2
+@export var walk_speed: float = 0.02
+
+## Vitesse de rotation des abeilles (1/s). Plus la valeur est grande, plus elles
+## s'orientent vite vers leur cible. Une valeur très grande revient à un look_at instantané.
+@export var turn_speed: float = 6.0
 
 ## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
 @export var perception_radius: float = 3.0
