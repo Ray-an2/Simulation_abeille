@@ -13,8 +13,17 @@ class_name CameraSwitcher extends Node3D
 ## Conteneur des abeilles créées par Simulation (Simulation/Bees).
 @export var bees_container: Node3D
 
+## Filtre plein écran affiché en vue abeille (CanvasLayer contenant le ColorRect).
+@export var bee_vision: CanvasLayer
+
 ## Indice de l'abeille suivie dans bees_container.
 var _bee_index := 0
+
+## Vue actuellement active (indice dans pcams).
+var _current_view := 0
+
+## Filtre activé par l'utilisateur (touche V). Il ne s'affiche qu'en vue abeille.
+var _bee_vision_enabled := true
 
 func _ready() -> void:
 	_select_view(0)
@@ -38,6 +47,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Changer d'abeille bascule aussi sur la vue abeille
 		_select_view(pcams.find(bee_view))
 		return
+	if event.physical_keycode == KEY_V:
+		_bee_vision_enabled = not _bee_vision_enabled
+		_update_bee_vision()
+		return
 	# physical_keycode : position de la touche, indépendante de la disposition (AZERTY)
 	_select_view(event.physical_keycode - KEY_1)
 
@@ -47,6 +60,8 @@ func _select_view(index: int) -> void:
 		return
 	for i in pcams.size():
 		pcams[i].priority = 10 if i == index else 0
+	_current_view = index
+	_update_bee_vision()
 
 ## Accroche [member bee_view] au repère CameraAnchor de l'abeille [param index].
 func _select_bee(index: int) -> void:
@@ -59,6 +74,12 @@ func _select_bee(index: int) -> void:
 	# Position et orientation de l'œil sont réglées dans bee.tscn, pas ici.
 	bee_view.reparent(anchor, false)
 	bee_view.transform = Transform3D.IDENTITY
+
+## Affiche le filtre seulement en vue abeille, et seulement s'il est activé.
+func _update_bee_vision() -> void:
+	if bee_vision == null:
+		return
+	bee_vision.visible = _bee_vision_enabled and pcams[_current_view] == bee_view
 	
 ## Passe en plein écran, ou revient en fenêtré si on y est déjà.
 func _toggle_fullscreen() -> void:
