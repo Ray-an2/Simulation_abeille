@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://c30xijrbqooqv"]
+
+[ext_resource type="PackedScene" uid="uid://d0h5x5h3flt8" path="res://assets/lily/scene.gltf" id="1_g1gxa"]
+
+[node name="Lys" type="Node3D" unique_id=794056136]
+
+[node name="Model" parent="." unique_id=1128648294 instance=ExtResource("1_g1gxa")]
+
+[node name="PistilMarker" type="Marker3D" parent="." unique_id=1844521211]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -0.011363441, 0.16152711, 0.02002123)
