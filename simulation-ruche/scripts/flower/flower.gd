@@ -30,6 +30,8 @@ const MAX_RESOURCE := 100.0
 const THRESHOLD := 20.0
 const HARVEST_AMOUNT := 5.0
 
+@onready var _pistil_marker: Marker3D = $PistilMarker
+
 # variable
 var state: State = State.AVAILABLE
 var resource: float = MAX_RESOURCE
@@ -87,6 +89,13 @@ func _finish_recharge() -> void:
 func _change_state(new_state: State) -> void:
 	state = new_state
 	state_changed.emit(new_state)
+
+func is_empty() -> bool:
+	return state == State.EMPTY
+
+## Retourne la position où l'abeille se pose
+func get_landing_position() -> Vector3:
+	return _pistil_marker.global_position
 
 ## Détection de l'espece de fleurs
 func _detect_species() -> Species:
