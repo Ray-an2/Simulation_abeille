@@ -10,7 +10,7 @@ func _init() -> void:
 
 
 func _process(p_delta) -> void:
-	$Label.text = "FPS: %s\n" % str(Engine.get_frames_per_second())
+	$Label.text = "FPS: %d\n" % Engine.get_frames_per_second()
 	if(visible_mode == 1):
 		$Label.text += "Move Speed: %.1f\n" % player.MOVE_SPEED if player else ""
 		$Label.text += "Position: %.1v\n" % player.global_position if player else ""
@@ -27,7 +27,7 @@ func _process(p_delta) -> void:
 			UI toggle: F9
 			Render mode: F10
 			Full screen: F11
-			Mouse toggle: Escape
+			Mouse toggle: Escape / F12
 			"""
 
 
@@ -47,7 +47,7 @@ func _unhandled_key_input(p_event: InputEvent) -> void:
 			KEY_F11:
 				toggle_fullscreen()
 				get_viewport().set_input_as_handled()
-			KEY_ESCAPE:
+			KEY_ESCAPE, KEY_F12:
 				if Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
 					Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 				else:
@@ -62,4 +62,3 @@ func toggle_fullscreen() -> void:
 		DisplayServer.window_set_size(Vector2(1280, 720))
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN)
-

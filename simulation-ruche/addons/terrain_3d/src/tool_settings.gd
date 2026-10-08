@@ -1,7 +1,9 @@
+# Copyright © 2023-2026 Cory Petkovsek, Roope Palmroos, and Contributors.
+# Tool settings bar for Terrain3D
 extends PanelContainer
 
-signal picking(type, callback)
-signal setting_changed
+signal picking(type: Terrain3DEditor.Tool, callback: Callable)
+signal setting_changed(setting: Variant)
 
 enum Layout {
 	HORIZONTAL,
@@ -39,6 +41,7 @@ const NO_SAVE: int = 0x20 # Don't save this in EditorSettings
 var plugin: EditorPlugin # Actually Terrain3DEditorPlugin, but Godot still has CRC errors
 var brush_preview_material: ShaderMaterial
 var select_brush_button: Button
+var selected_brush_imgs: Array
 var main_list: HFlowContainer
 var advanced_list: VBoxContainer
 var height_list: VBoxContainer
@@ -85,6 +88,9 @@ func _ready() -> void:
 
 	add_setting({ "name":"enable_texture", "label":"Texture", "type":SettingType.CHECKBOX, 
 								"list":main_list, "default":true, "flags":ADD_SEPARATOR })
+
+	add_setting({ "name":"texture_filter", "label":"Texture Filter", "type":SettingType.CHECKBOX, 
+								"list":main_list, "default":false, "flags":ADD_SEPARATOR })
 
 	add_setting({ "name":"margin", "type":SettingType.SLIDER, "list":main_list, "default":0, 
 								"unit":"", "range":Vector3(-50, 50, 1), "flags":ALLOW_OUT_OF_BOUNDS })
@@ -152,7 +158,7 @@ func _ready() -> void:
 								#"range":Vector3(0, 3, 1) })
 
 	if DisplayServer.is_touchscreen_available():
-		add_setting({ "name":"remove", "label":"Invert", "type":SettingType.CHECKBOX, "list":main_list, "default":false, "flags":ADD_SEPARATOR })
+		add_setting({ "name":"invert", "label":"Invert", "type":SettingType.CHECKBOX, "list":main_list, "default":false, "flags":ADD_SEPARATOR })
 
 	var spacer: Control = Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -171,6 +177,8 @@ func _ready() -> void:
 								"unit":"γ", "range":Vector3(0.1, 2.0, 0.01) })
 	add_setting({ "name":"jitter", "type":SettingType.SLIDER, "list":advanced_list, "default":50, 
 								"unit":"%", "range":Vector3(0, 100, 1) })
+	add_setting({ "name":"crosshair_threshold", "type":SettingType.SLIDER, "list":advanced_list, "default":16., 
+								"unit":"m", "range":Vector3(0, 200, 1) })
 
 
 func create_submenu(p_parent: Control, p_button_name: String, p_layout: Layout, p_hover_pop: bool = true) -> Container:
@@ -267,29 +275,33 @@ func add_brushes(p_parent: Control) -> void:
 		while file_name != "":
 			if !dir.current_is_dir() and file_name.ends_with(".exr"):
 				var img: Image = Image.load_from_file(BRUSH_PATH + "/" + file_name)
-				img = Terrain3DUtil.black_to_alpha(img)
-				if img.get_width() < 1024 and img.get_height() < 1024:
-					img.resize(1024, 1024, Image.INTERPOLATE_CUBIC)
-				var tex: ImageTexture = ImageTexture.create_from_image(img)
+				var thumbimg: Image = img.duplicate()
+				img.convert(Image.FORMAT_RF)
 
-				var btn: Button = Button.new()
-				btn.set_custom_minimum_size(Vector2.ONE * 100)
-				btn.set_button_icon(tex)
-				btn.set_meta("image", img)
-				btn.set_expand_icon(true)
-				btn.set_material(_get_brush_preview_material())
-				btn.set_toggle_mode(true)
-				btn.set_button_group(brush_button_group)
-				btn.mouse_entered.connect(_on_brush_hover.bind(true, btn))
-				btn.mouse_exited.connect(_on_brush_hover.bind(false, btn))
-				brush_list.add_child(btn, true)
+				if thumbimg.get_width() != 100 and thumbimg.get_height() != 100:
+					thumbimg.resize(100, 100, Image.INTERPOLATE_CUBIC)
+				thumbimg = Terrain3DUtil.black_to_alpha(thumbimg)
+				thumbimg.convert(Image.FORMAT_LA8)
+				var thumbtex: ImageTexture = ImageTexture.create_from_image(thumbimg)
+				
+				var brush_btn: Button = Button.new()
+				brush_btn.set_custom_minimum_size(Vector2.ONE * 100)
+				brush_btn.set_button_icon(thumbtex)
+				brush_btn.set_meta("image", img)
+				brush_btn.set_expand_icon(true)
+				brush_btn.set_material(_get_brush_preview_material())
+				brush_btn.set_toggle_mode(true)
+				brush_btn.set_button_group(brush_button_group)
+				brush_btn.mouse_entered.connect(_on_brush_hover.bind(true, brush_btn))
+				brush_btn.mouse_exited.connect(_on_brush_hover.bind(false, brush_btn))
+				brush_list.add_child(brush_btn, true)
 				if file_name == DEFAULT_BRUSH:
-					default_brush_btn = btn 
+					default_brush_btn = brush_btn 
 				
 				var lbl: Label = Label.new()
-				btn.name = file_name.get_basename().to_pascal_case()
-				btn.add_child(lbl, true)
-				lbl.text = btn.name
+				brush_btn.name = file_name.get_basename().to_pascal_case()
+				brush_btn.add_child(lbl, true)
+				lbl.text = brush_btn.name
 				lbl.visible = false
 				lbl.position.y = 70
 				lbl.add_theme_color_override("font_shadow_color", Color.BLACK)
@@ -304,6 +316,7 @@ func add_brushes(p_parent: Control) -> void:
 	if not default_brush_btn:
 		default_brush_btn = brush_button_group.get_buttons()[0]
 	default_brush_btn.set_pressed(true)
+	_generate_brush_texture(default_brush_btn)
 	
 	settings["brush"] = brush_button_group
 
@@ -333,12 +346,13 @@ func _on_pick(p_type: Terrain3DEditor.Tool) -> void:
 func _on_picked(p_type: Terrain3DEditor.Tool, p_color: Color, p_global_position: Vector3) -> void:
 	match p_type:
 		Terrain3DEditor.HEIGHT:
-			settings["height"].value = p_color.r if not is_nan(p_color.r) else 0
+			settings["height"].value = p_color.r if not is_nan(p_color.r) else 0.
 		Terrain3DEditor.COLOR:
 			settings["color"].color = p_color if not is_nan(p_color.r) else Color.WHITE
 		Terrain3DEditor.ROUGHNESS:
-			# 200... -.5 converts 0,1 to -100,100
-			settings["roughness"].value = round(200 * (p_color.a - 0.5)) if not is_nan(p_color.r) else 0.499
+			# This converts 0,1 to -100,100
+			# It also quantizes explicitly so picked values matches painted values
+			settings["roughness"].value = round(200. * float(int(p_color.a * 255.) / 255. - .5)) if not is_nan(p_color.r) else 0.
 		Terrain3DEditor.ANGLE:
 			settings["angle"].value = p_color.r
 		Terrain3DEditor.SCALE:
@@ -443,7 +457,7 @@ func add_setting(p_args: Dictionary) -> void:
 			pending_children.push_back(option)
 			control = option
 
-		SettingType.SLIDER, SettingType.DOUBLE_SLIDER:			
+		SettingType.SLIDER, SettingType.DOUBLE_SLIDER:
 			var slider: Control
 			if p_type == SettingType.SLIDER:
 				# Create an editable value box
@@ -473,7 +487,7 @@ func add_setting(p_args: Dictionary) -> void:
 			else: # DOUBLE_SLIDER
 				var label := Label.new()
 				label.set_custom_minimum_size(Vector2(60, 0))
-				label.set_horizontal_alignment(HORIZONTAL_ALIGNMENT_RIGHT)
+				label.set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER)
 				slider = DoubleSlider.new()
 				slider.label = label
 				slider.suffix = p_suffix
@@ -560,9 +574,7 @@ func get_setting(p_setting: String) -> Variant:
 	elif object is DoubleSlider:
 		value = object.get_value()
 	elif object is ButtonGroup: # "brush"
-		var img: Image = object.get_pressed_button().get_meta("image")
-		var tex: Texture2D = object.get_pressed_button().get_button_icon()
-		value = [ img, tex ]
+		value = selected_brush_imgs
 	elif object is CheckBox:
 		value = object.is_pressed()
 	elif object is ColorPickerButton:
@@ -610,19 +622,30 @@ func show_settings(p_settings: PackedStringArray) -> void:
 			select_brush_button.show()
 
 
-func _on_setting_changed(p_data: Variant = null) -> void:
-	# If a button was clicked on a submenu
-	if p_data is Button and p_data.get_parent().get_parent() is PopupPanel:
-		if p_data.get_parent().name == "BrushList":
-			# Optionally Set selected brush texture in main brush button
-			p_data.get_parent().get_parent().get_parent().set_button_icon(p_data.get_button_icon())
-			# Hide popup
-			p_data.get_parent().get_parent().set_visible(false)
-			# Hide label
-			if p_data.get_child_count() > 0:
-				p_data.get_child(0).visible = false
-	emit_signal("setting_changed")
-	
+func _on_setting_changed(p_setting: Variant = null) -> void:
+	# If a brush was selected
+	if p_setting is Button and p_setting.get_parent().name == "BrushList":
+		_generate_brush_texture(p_setting)
+		# Optionally Set selected brush texture in main brush button
+		if select_brush_button:
+			select_brush_button.set_button_icon(p_setting.get_button_icon())
+		# Hide popup
+		p_setting.get_parent().get_parent().set_visible(false)
+		# Hide label
+		if p_setting.get_child_count() > 0:
+			p_setting.get_child(0).visible = false
+	emit_signal("setting_changed", p_setting)
+
+
+func _generate_brush_texture(p_btn: Button) -> void:
+	if p_btn is Button:
+		var img: Image = p_btn.get_meta("image")
+		if img.get_width() < 1024 and img.get_height() < 1024:
+			img = img.duplicate()
+			img.resize(1024, 1024, Image.INTERPOLATE_CUBIC)
+		var tex: ImageTexture = ImageTexture.create_from_image(img)
+		selected_brush_imgs = [ img, tex ]
+
 
 func _on_drawable_toggled(p_button_pressed: bool) -> void:
 	if not p_button_pressed:
