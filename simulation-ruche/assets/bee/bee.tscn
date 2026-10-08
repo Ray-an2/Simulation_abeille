@@ -10,4 +10,4 @@ script = ExtResource("1_j85ti")
 transform = Transform3D(0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0)
 
 [node name="CameraAnchor" type="Marker3D" parent="." unique_id=1955092898]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.003156893, 0.0076464172)
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.003258166, 0.006792824)

@@ -22,9 +22,15 @@ func _ready() -> void:
 	# donc avant que Simulation ait créé les abeilles
 	_select_bee.call_deferred(0)
 
+## Raccourcis clavier : 1, 2, 3… changent de vue, Tab / Maj+Tab changent d'abeille suivie,
+## F11 bascule en plein écran. _unhandled_input reçoit les touches que l'interface n'a pas déjà consommées.
 func _unhandled_input(event: InputEvent) -> void:
 	# echo : ignore la répétition quand la touche reste enfoncée
 	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	# F11 : bascule entre fenêtré et plein écran
+	if event.physical_keycode == KEY_F11:
+		_toggle_fullscreen()
 		return
 	if event.physical_keycode == KEY_TAB:
 		# Maj+Tab : abeille précédente
@@ -53,3 +59,15 @@ func _select_bee(index: int) -> void:
 	# Position et orientation de l'œil sont réglées dans bee.tscn, pas ici.
 	bee_view.reparent(anchor, false)
 	bee_view.transform = Transform3D.IDENTITY
+	
+## Passe en plein écran, ou revient en fenêtré si on y est déjà.
+func _toggle_fullscreen() -> void:
+	# Jeu affiché dans l'onglet Jeu de l'éditeur : seul le mode fenêtré est autorisé
+	if Engine.is_embedded_in_editor():
+		push_warning("Plein écran indisponible : désactiver « Intégrer le jeu » dans l'onglet Jeu")
+		return
+	var fullscreen := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	DisplayServer.window_set_mode(
+		DisplayServer.WINDOW_MODE_WINDOWED if fullscreen
+		else DisplayServer.WINDOW_MODE_FULLSCREEN
+	)
