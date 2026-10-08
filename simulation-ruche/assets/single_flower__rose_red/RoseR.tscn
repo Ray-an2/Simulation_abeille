@@ -1,8 +1,10 @@
 [gd_scene format=3 uid="uid://cm4uwqosudq5c"]
 
 [ext_resource type="PackedScene" uid="uid://l70a3m4xgcsm" path="res://assets/single_flower__rose_red/scene.gltf" id="1_ctdem"]
+[ext_resource type="Script" uid="uid://c0rn8tqubfrxl" path="res://scripts/flower/flower.gd" id="1_empty"]
 
 [node name="RoseR" type="Node3D" unique_id=972786973]
+script = ExtResource("1_empty")
 
 [node name="Model" parent="." unique_id=424689206 instance=ExtResource("1_ctdem")]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0.078105465, 0, -0.012400012)
