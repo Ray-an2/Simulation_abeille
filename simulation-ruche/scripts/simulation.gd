@@ -16,13 +16,13 @@ class_name Simulation extends Node3D
 @export_group("Population")
 
 ## Nombre d'abeilles créées au lancement.
-@export_range(20, 200) var bee_count: int = 5
+@export_range(20, 200) var bee_count: int = 10
 
 @export_group("Comportement")
 
 ## Probabilité par seconde qu'une abeille en IDLE parte explorer.
 ## À multiplier par delta dans IdleState, pour ne pas dépendre de la fréquence d'images.
-@export var p_scout: float = 0.05
+@export var p_scout: float = 0.01
 
 ## Rayon (unités) de la zone explorée autour de la ruche en SCOUT.
 @export var scout_radius: float = 10.0

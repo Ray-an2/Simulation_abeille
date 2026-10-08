@@ -80,13 +80,31 @@ func change_state(next: BeeState) -> void:
 	current_state.enter()
 
 # =============================================================================
-# Utilitaires appelés par les états
+# Déplacement (appelé par les états)
 # =============================================================================
 
 ## Vole en ligne droite vers [param target] à la vitesse [member Simulation.fly_speed].
 ## À appeler à chaque update() tant que la cible n'est pas atteinte.
+## Le haut de l'abeille reste aligné sur la verticale du monde.
 func fly_towards(target: Vector3, delta: float) -> void:
-	_move_towards(target, simulation.fly_speed * delta)
+	_move_towards(target, simulation.fly_speed * delta, Vector3.UP)
+
+## Marche vers [param target] à la vitesse [member Simulation.walk_speed].
+## Réservé aux états du super-état Ruche.
+## [param up] est la normale de la surface parcourue : passer
+## [method Hive.get_comb_normal] pour que l'abeille reste à plat sur le cadre.
+func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP) -> void:
+	_move_towards(target, simulation.walk_speed * delta, up)
+	
+## Renvoie [code]true[/code] si l'abeille est à moins de [param radius] de [param target].
+## Sert de test d'arrivée pour GO, RETURN, etc.
+func is_near(target: Vector3, radius: float) -> bool:
+	# Comparaison des carrés : évite une racine carrée à chaque appel
+	return global_position.distance_squared_to(target) <= radius * radius
+	
+# =============================================================================
+# Animation (appelé par les états)
+# =============================================================================
 
 ## Joue [param anim_name] depuis un point aléatoire, pour que les abeilles
 ## ne battent pas des ailes en parfaite synchronisation.
@@ -96,33 +114,30 @@ func play_animation(anim_name: StringName) -> void:
 	_anim.play(anim_name)
 	if _anim.get_animation(anim_name).loop_mode != Animation.LOOP_NONE:
 		_anim.seek(randf() * _anim.current_animation_length, true)
-
-## Marche sur le rayon vers [param target] à la vitesse [member Simulation.walk_speed].
-## Réservé aux états du super-état Ruche.
-func walk_towards(target: Vector3, delta: float) -> void:
-	_move_towards(target, simulation.walk_speed * delta)
 	
-	## Renvoie [code]true[/code] si l'abeille est à moins de [param radius] de [param target].
-## Sert de test d'arrivée pour GO, RETURN, etc.
-func is_near(target: Vector3, radius: float) -> bool:
-	# Comparaison des carrés : évite une racine carrée à chaque appel
-	return global_position.distance_squared_to(target) <= radius * radius
+# =============================================================================
+# Utilitaires internes
+# =============================================================================
 	
-## Avance d'au plus [param step] vers [param target] en s'orientant dans la direction du mouvement.
+## Avance d'au plus [param step] vers [param target], en s'orientant dans la direction
+## du mouvement avec [param up] comme vecteur haut.
 ## [param step] est déjà multiplié par delta.
-func _move_towards(target: Vector3, step: float) -> void:
+func _move_towards(target: Vector3, step: float, up: Vector3) -> void:
 	var to_target := target - global_position
 	# Déjà sur la cible : on ne bouge pas, et on évite un look_at sur un vecteur nul
 	if to_target.length_squared() < 0.000001:
 		return
-	_face(to_target)
+	_face(to_target, up)
 	# move_toward ne dépasse jamais la cible : pas d'oscillation à l'arrivée
 	global_position = global_position.move_toward(target, step)
 	
-## Oriente l'abeille vers [param direction] (avant du modèle sur +Z, convention glTF).
-func _face(direction: Vector3) -> void:
+## Oriente l'abeille vers [param direction] avec [param up] comme vecteur haut
+## (avant du modèle sur +Z, convention glTF).
+func _face(direction: Vector3, up: Vector3) -> void:
 	var dir := direction.normalized()
-	# look_at échoue si la direction est parallèle au vecteur up
-	# (vol vertical, marche verticale sur le cadre) : on change alors de vecteur up
-	var up := Vector3.FORWARD if absf(dir.dot(Vector3.UP)) > 0.99 else Vector3.UP
+	# look_at échoue si la direction est parallèle au vecteur haut
+	# (vol vertical, ou cible hors du plan du cadre) : on prend alors un vecteur de secours
+	if absf(dir.dot(up)) > 0.99:
+		up = Vector3.FORWARD if absf(dir.dot(Vector3.UP)) > 0.99 else Vector3.UP
+	# true : utilise +Z comme avant du modèle au lieu de -Z (convention Godot)
 	look_at(global_position + dir, up, true)

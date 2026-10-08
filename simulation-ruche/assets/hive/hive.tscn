@@ -22,4 +22,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0159003, 0.214505, 0)
 
 [node name="SpawnMarker" type="Marker3D" parent="Model" unique_id=1352891785]
 unique_name_in_owner = true
-transform = Transform3D(-1, 0, 8.74228e-08, 0, 1, 0, -8.74228e-08, 0, -1, 0.0015575774, 0.059335, -0.272392)
+transform = Transform3D(-4.3711406e-08, 1, 4.371139e-08, 0, -4.371139e-08, 1, 1, 4.3711402e-08, 0, 0.015463909, 0.20469825, -3.9916486e-06)
