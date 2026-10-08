@@ -2,24 +2,32 @@
 
 [ext_resource type="Script" uid="uid://dkq280gmyuu3w" path="res://scripts/hive/hive.gd" id="1_1hcnt"]
 [ext_resource type="PackedScene" uid="uid://b0y6vo6aalspq" path="res://assets/hive/hive.glb" id="1_52cir"]
+[ext_resource type="AudioStream" uid="uid://cd6yl0c1oqcak" path="res://assets/audio/hive-ambient.ogg" id="3_5x64p"]
 
 [node name="Hive" type="Node3D" unique_id=500112710]
 script = ExtResource("1_1hcnt")
 
 [node name="Model" parent="." unique_id=1033396928 instance=ExtResource("1_52cir")]
 
-[node name="LandingMarker" type="Marker3D" parent="Model" unique_id=1713528870]
+[node name="LandingMarker" type="Marker3D" parent="." unique_id=1713528870]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0602156, -0.27811)
 
-[node name="EntranceMarker" type="Marker3D" parent="Model" unique_id=2038964992]
+[node name="EntranceMarker" type="Marker3D" parent="." unique_id=2038964992]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000862888, 0.0614109, -0.254323)
 
-[node name="DanceMarker" type="Marker3D" parent="Model" unique_id=362317231]
+[node name="DanceMarker" type="Marker3D" parent="." unique_id=362317231]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0159003, 0.214505, 0)
 
-[node name="SpawnMarker" type="Marker3D" parent="Model" unique_id=1352891785]
+[node name="SpawnMarker" type="Marker3D" parent="." unique_id=1352891785]
 unique_name_in_owner = true
 transform = Transform3D(-4.3711406e-08, 1, 4.371139e-08, 0, -4.371139e-08, 1, 1, 4.3711402e-08, 0, 0.0119759925, 0.20469825, -3.9916486e-06)
+
+[node name="HiveBuzz" type="AudioStreamPlayer3D" parent="." unique_id=1276125601]
+unique_name_in_owner = true
+stream = ExtResource("3_5x64p")
+autoplay = true
+max_distance = 3.0
+bus = &"Bees"

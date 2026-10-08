@@ -18,6 +18,9 @@ var simulation: Simulation
 ## Lecteur d'animations du modèle glTF (hover, idle, take_off_and_land).
 @onready var _anim: AnimationPlayer = $Model/AnimationPlayer
 
+## Bourdonnement individuel, audible uniquement en vol.
+@onready var _buzz: AudioStreamPlayer3D = $Buzz
+
 # =============================================================================
 # Données partagées entre les états
 # =============================================================================
@@ -61,6 +64,8 @@ func _ready() -> void:
 	idle = IdleState.new(self)
 	scout = ScoutState.new(self)
 	return_home = ReturnState.new(self)
+	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
+	_buzz.pitch_scale = randf_range(0.9, 1.1)
 	change_state(idle)
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
@@ -74,10 +79,28 @@ func _physics_process(delta: float) -> void:
 ## Quitte l'état courant ([method BeeState.exit]) puis entre dans [param next]
 ## ([method BeeState.enter]). Seul point de passage de toutes les transitions.
 func change_state(next: BeeState) -> void:
+	# Super-état avant / après : seul un passage Ruche ↔ Dehors nous intéresse
+	var was_inside := current_state is HiveState   # false au premier appel (null)
+	var is_inside := next is HiveState
+	
 	if current_state != null:
 		current_state.exit()
 	current_state = next
+	
+	if is_inside != was_inside:
+		_on_location_changed(is_inside)
+		
 	current_state.enter()
+
+## Prévient la ruche et allume/coupe le bourdonnement individuel.
+func _on_location_changed(inside: bool) -> void:
+	if inside:
+		hive.bee_entered()
+		_buzz.stop()
+	else:
+		hive.bee_left()
+		# Départ aléatoire dans la boucle : les abeilles ne sont pas en phase
+		_buzz.play(randf() * _buzz.stream.get_length())
 
 # =============================================================================
 # Déplacement (appelé par les états)
@@ -115,6 +138,23 @@ func play_animation(anim_name: StringName) -> void:
 	_anim.play(anim_name)
 	if _anim.get_animation(anim_name).loop_mode != Animation.LOOP_NONE:
 		_anim.seek(randf() * _anim.current_animation_length, true)
+		
+# =============================================================================
+# Son et présence dans la ruche (appelé par change_state)
+# =============================================================================
+	
+## Joue le bourdonnement dans les états « Dehors », le coupe dans la ruche
+## (où un son collectif posé sur Hive prend le relais).
+func _update_buzz() -> void:
+	var flying := current_state is FieldState
+	# Rien à faire si le son est déjà dans le bon état (ex. SCOUT → FORAGE)
+	if flying == _buzz.playing:
+		return
+	if flying:
+		# Départ à un point aléatoire de la boucle : les abeilles ne sont pas en phase
+		_buzz.play(randf() * _buzz.stream.get_length())
+	else:
+		_buzz.stop()
 	
 # =============================================================================
 # Utilitaires internes

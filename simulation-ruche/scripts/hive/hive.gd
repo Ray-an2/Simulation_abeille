@@ -27,6 +27,19 @@ const SPAWN_MAX_ATTEMPTS := 5
 ## Distance minimale (m) entre deux abeilles à l'apparition.
 @export var spawn_min_spacing: float = 0.01
 
+@export_group("Son")
+
+## Volume (dB) du bourdonnement pour une seule abeille dans la ruche.
+## Le volume réel monte de 10·log10(N) dB avec N abeilles présentes.
+@export var buzz_single_db: float = -30.0
+
+## Vitesse de lissage du volume : évite les sauts quand plusieurs
+## abeilles entrent ou sortent en même temps.
+@export var buzz_smoothing: float = 2.0
+
+## Bourdonnement collectif de la colonie.
+@onready var _buzz: AudioStreamPlayer3D = %HiveBuzz
+
 # =============================================================================
 # Nœuds de la scène
 # =============================================================================
@@ -52,12 +65,18 @@ var _comb_center_local := Vector3.ZERO
 ## pour respecter spawn_min_spacing.
 var _used_spawn_positions: Array[Vector2] = []
 
+## Nombre d'abeilles actuellement dans un état du super-état Ruche.
+var bees_inside := 0
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
 
 func _ready() -> void:
 	_compute_comb_extent()
+
+func _process(delta: float) -> void:
+	_update_buzz_volume(delta)
 
 # =============================================================================
 # Points de passage
@@ -192,3 +211,27 @@ func clear_spawn_positions() -> void:
 # =============================================================================
 # Danses (boucle positive : recrutement)
 # =============================================================================
+
+# =============================================================================
+# Présence des abeilles (appelé par Bee.change_state)
+# =============================================================================
+
+func bee_entered() -> void:
+	bees_inside += 1
+
+func bee_left() -> void:
+	bees_inside = maxi(bees_inside - 1, 0)
+	
+# =============================================================================
+# Son
+# =============================================================================
+
+## Ajuste le volume du bourdonnement collectif au nombre d'abeilles présentes.
+func _update_buzz_volume(delta: float) -> void:
+	# Ruche vide : silence (-80 dB est inaudible)
+	var target := -80.0
+	if bees_inside > 0:
+		# Sommation de sources indépendantes : +10·log10(N) dB
+		target = buzz_single_db + linear_to_db(sqrt(float(bees_inside)))
+	# Lissage exponentiel, indépendant du framerate
+	_buzz.volume_db = lerpf(_buzz.volume_db, target, 1.0 - exp(-buzz_smoothing * delta))
