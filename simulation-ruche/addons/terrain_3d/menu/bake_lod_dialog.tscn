@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://bhvrrmb8bk1bt"]
+[gd_scene format=3 uid="uid://bhvrrmb8bk1bt"]
 
 [ext_resource type="Script" path="res://addons/terrain_3d/menu/bake_lod_dialog.gd" id="1_sf76d"]
 

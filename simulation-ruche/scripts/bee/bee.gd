@@ -39,6 +39,9 @@ var scout: ScoutState
 ## État actif. Son [method BeeState.update] est appelé à chaque frame physique.
 var current_state: BeeState
 
+## État de retour à la ruche
+var return_home: ReturnState
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
