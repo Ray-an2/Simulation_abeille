@@ -18,6 +18,7 @@ func enter() -> void:
 	_target_direction = _direction
 	_time_before_turn = 0.0
 	_remaining=20.0
+	bee.play_animation(&"_bee_hover")
 
 ## Fonction de déplacement et de recherche de fleur(pas encore implémentée)
 func update(delta: float) -> BeeState:
