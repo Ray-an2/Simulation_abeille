@@ -14,6 +14,7 @@ const LOOK_AHEAD := 10.0         # distance du point visé devant l'abeille
 
 ## Reset du timer à chaque entrée dans l'état + cap initial
 func enter() -> void:
+	bee.play_animation(&"_bee_take_off")
 	_direction = bee.global_transform.basis.z.normalized()
 	_target_direction = _direction
 	_time_before_turn = 0.0
