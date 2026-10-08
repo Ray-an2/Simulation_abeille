@@ -1,10 +1,13 @@
 [gd_scene format=3 uid="uid://1pblv7ehvdsi"]
 
 [ext_resource type="PackedScene" uid="uid://bqr2r6el01003" path="res://assets/bee/bee.gltf" id="1_h63oj"]
-[ext_resource type="Script" uid="uid://baekt7xsecqnd" path="res://scripts/bee/bee.gd" id="1_j85ti"]
+[ext_resource type="Script" path="res://scripts/bee/bee.gd" id="1_j85ti"]
 
 [node name="Bee" type="Node3D" unique_id=2131089251]
 script = ExtResource("1_j85ti")
 
 [node name="Model" parent="." unique_id=2045436885 instance=ExtResource("1_h63oj")]
 transform = Transform3D(0.8, 0, 0, 0, 0.8, 0, 0, 0, 0.8, 0, 0, 0)
+
+[node name="CameraAnchor" type="Marker3D" parent="." unique_id=1955092898]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.003156893, 0.0076464172)
