@@ -56,8 +56,18 @@ class_name Simulation extends Node3D
 ## Vitesse de marche sur le rayon (unités/s). À ajuster à l'échelle de la ruche.
 @export var walk_speed: float = 0.2
 
+## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
+@export var perception_radius: float = 3.0
+
+## Distance (unités) en dessous de laquelle l'abeille est considérée arrivée.
+@export var arrival_radius: float = 0.05
+
+## Toutes les fleurs de la scène, collectées au lancement.
+var flowers: Array[Flower] = []
+
 ## Crée [member bee_count] abeilles et leur injecte la ruche et la simulation.
 func _ready() -> void:
+	flowers.assign(get_tree().get_nodes_in_group(&"flowers"))
 	for i in bee_count:
 		var bee: Bee = bee_scene.instantiate()
 		bee.name = "Bee_%03d" % (i + 1)   # Bee_001, Bee_002...
