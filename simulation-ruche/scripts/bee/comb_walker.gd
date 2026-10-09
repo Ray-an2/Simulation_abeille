@@ -102,7 +102,10 @@ func steer_towards(point: Vector3, rate: float, delta: float) -> void:
 ## puis avance d'une frame en évitant voisines et bords.
 ## À appeler à chaque frame par l'état Ruche actif, y compris en pause (target_speed = 0)
 ## pour que l'abeille finisse de freiner.
-func step(target_speed: float, delta: float) -> void:
+## [param steer_from_edges] : réoriente le cap vers le centre près d'un bord. À désactiver
+## quand l'état vise volontairement un point au bord du cadre (sortie de ruche),
+## sinon les deux virages se contrarient. L'abeille reste de toute façon bornée au cadre.
+func step(target_speed: float, delta: float, steer_from_edges: bool = true) -> void:
 	var rate := ACCELERATION if target_speed > current_speed else DECELERATION
 	current_speed = move_toward(current_speed, target_speed, rate * delta)
 	if current_speed <= 0.0:
@@ -111,7 +114,7 @@ func step(target_speed: float, delta: float) -> void:
 	var normal := bee.hive.get_comb_normal()
 	var brake := _avoid_neighbours(normal, delta)
 	# Bords traités après l'évitement : une voisine ne peut pas pousser l'abeille hors du cadre
-	var target := _keep_inside(delta)
+	var target := _keep_inside(delta, steer_from_edges)
 	bee.walk_towards(target, delta, normal, current_speed * brake)
 
 ## Renvoie true si l'abeille est complètement arrêtée.
@@ -180,11 +183,11 @@ func _avoid_neighbours(normal: Vector3, delta: float) -> float:
 	# Plus la voisine est proche, plus l'abeille freine
 	return 1.0 - AVOID_BRAKE * urgency
 
-## Renvoie le point visé devant l'abeille, borné au cadre. Si ce point sortait du cadre,
-## le cap est réorienté progressivement vers le centre.
-func _keep_inside(delta: float) -> Vector3:
+## Renvoie le point visé devant l'abeille, borné au cadre. Si ce point sortait du cadre
+## et que [param steer_from_edges] est vrai, le cap est réorienté progressivement vers le centre.
+func _keep_inside(delta: float, steer_from_edges: bool) -> Vector3:
 	var ahead := bee.global_position + heading * LOOK_AHEAD
 	var clamped := bee.hive.clamp_to_comb(ahead)
-	if not ahead.is_equal_approx(clamped):
+	if steer_from_edges and not ahead.is_equal_approx(clamped):
 		steer_towards(bee.hive.get_comb_center(), EDGE_TURN_RATE, delta)
 	return clamped

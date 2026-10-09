@@ -4,18 +4,23 @@
 [ext_resource type="PackedScene" uid="uid://b0y6vo6aalspq" path="res://assets/hive/hive.glb" id="1_52cir"]
 [ext_resource type="AudioStream" uid="uid://cd6yl0c1oqcak" path="res://assets/audio/hive-ambient.ogg" id="3_5x64p"]
 
+[sub_resource type="Curve3D" id="Curve3D_5x64p"]
+bake_interval = 0.01
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 0.0068170596, -0.045972183, -0.003510451, 0, 0, 0, 0, 0, 0, -0.0012244526, -0.04858136, -0.21456812, 0, 0, 0, 0, 0, 0, 0.0066849757, 0.027802259, 0, 0, 0, 0, 0, 0, 0, -0.006171854, -0.049616173, -0.26838678),
+"tilts": PackedFloat32Array(0, 0, 0, 0)
+}
+point_count = 4
+
 [node name="Hive" type="Node3D" unique_id=500112710]
 script = ExtResource("1_1hcnt")
 
 [node name="Model" parent="." unique_id=1033396928 instance=ExtResource("1_52cir")]
+metadata/_edit_lock_ = true
 
 [node name="LandingMarker" type="Marker3D" parent="." unique_id=1713528870]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0602156, -0.27811)
-
-[node name="EntranceMarker" type="Marker3D" parent="." unique_id=2038964992]
-unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000862888, 0.0614109, -0.254323)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0602156, -0.2705567)
 
 [node name="DanceMarker" type="Marker3D" parent="." unique_id=362317231]
 unique_name_in_owner = true
@@ -31,3 +36,8 @@ stream = ExtResource("3_5x64p")
 autoplay = true
 max_distance = 3.0
 bus = &"Bees"
+
+[node name="ExitPath" type="Path3D" parent="." unique_id=1906483546]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00596427, 0.10752633, 0)
+curve = SubResource("Curve3D_5x64p")
