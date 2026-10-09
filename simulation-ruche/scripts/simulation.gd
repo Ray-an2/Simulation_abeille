@@ -69,12 +69,25 @@ class_name Simulation extends Node3D
 ## Toutes les fleurs de la scène, collectées au lancement.
 var flowers: Array[Flower] = []
 
+@export_group("Fleur")
+
+## Ressources maximum dans une fleur
+@export var max_resource := 100.0
+
+## Seuil de la fleur
+@export var threshold := 20.0
+
+## Quantite de nectar récolter de l'abeille
+@export var harvest_amount := 5.0
+
 ## Crée [member bee_count] abeilles et leur injecte la ruche et la simulation.
 func _ready() -> void:
 	# La ruche doit avoir calculé la zone du cadre avant qu'on y place les abeilles
 	if not hive.is_node_ready():
 		await hive.ready
 	flowers.assign(get_tree().get_nodes_in_group(&"flowers"))
+	for flower in flowers:
+		flower.setup(self)
 	for i in bee_count:
 		var bee: Bee = bee_scene.instantiate()
 		bee.name = "Bee_%03d" % (i + 1)   # Bee_001, Bee_002...

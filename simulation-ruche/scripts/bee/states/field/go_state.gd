@@ -1,8 +1,5 @@
 class_name GoState extends FieldState
 
-# Constant à mettre dans simulation.gd
-const ARRIVAL_RADIUS := 0.5
-
 ## Position de la fleur visée
 var _target: Vector3
 
@@ -20,7 +17,7 @@ func update(delta: float) -> BeeState:
 	bee.fly_towards(_target, delta)
 	
 	# On reste dans GO si on est pas arrivé
-	if not bee.is_near(_target, ARRIVAL_RADIUS): return null
+	if not bee.is_near(_target, bee.simulation.arrival_radius): return null
 	
 	# Arrivé et null: on explore
 	if flower.is_empty():

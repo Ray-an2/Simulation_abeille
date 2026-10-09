@@ -25,16 +25,14 @@ var species : Species
 ## Temps de recharge (secondes) par espèces
 var recharge_time: float
 
-# Mettre dans simulation.gd
-const MAX_RESOURCE := 100.0
-const THRESHOLD := 20.0
-const HARVEST_AMOUNT := 5.0
-
 @onready var _pistil_marker: Marker3D = $PistilMarker
+
+## Référence vers la simuation
+var simulation: Simulation
 
 # variable
 var state: State = State.AVAILABLE
-var resource: float = MAX_RESOURCE
+var resource: float
 var locked: bool = false
 var _timer: float = 0.0
 
@@ -43,6 +41,11 @@ func _ready() -> void:
 	species = _detect_species()
 	recharge_time = RECHARGE_TIME[species]
 	set_process(false)
+
+## Appel Simulation au lancement
+func setup(sim: Simulation) -> void:
+	simulation = sim
+	resource = simulation.max_resource
 
 func _process(delta: float) -> void:
 	_timer -= delta
@@ -66,11 +69,11 @@ func request_foraging() -> bool:
 	
 ## Vérifie l'état de la fleur après le butinage 
 func _finish_foraging() -> void:
-	resource -= HARVEST_AMOUNT
+	resource -= simulation.harvest_amount
 	locked = false
-	foraging_finished.emit(self, HARVEST_AMOUNT) # butinage terminé
+	foraging_finished.emit(self, simulation.harvest_amount) # butinage terminé
 
-	if resource > THRESHOLD:
+	if resource > simulation.threshold:
 		_change_state(State.AVAILABLE) # changement d'état
 		set_process(false)
 	else:
@@ -80,7 +83,7 @@ func _finish_foraging() -> void:
  
 ## Rend la fleur disponible avec ces ressources pleines 
 func _finish_recharge() -> void:
-	resource = MAX_RESOURCE
+	resource = simulation.max_resource
 	_change_state(State.AVAILABLE)
 	set_process(false)
  
