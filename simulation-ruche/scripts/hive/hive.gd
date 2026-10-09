@@ -65,8 +65,16 @@ var _comb_center_local := Vector3.ZERO
 ## pour respecter spawn_min_spacing.
 var _used_spawn_positions: Array[Vector2] = []
 
-## Nombre d'abeilles actuellement dans un état du super-état Ruche.
-var bees_inside := 0
+## Abeilles actuellement dans un état du super-état Ruche.
+## Tenue à jour par Bee.change_state() via bee_entered() / bee_left() ;
+## sert au volume du bourdonnement et à l'évitement entre abeilles.
+var _comb_bees: Array[Bee] = []
+
+## Nombre d'abeilles dans la ruche, déduit de la liste (lecture seule).
+## Gardé sous ce nom pour ne pas casser le code qui l'utilise déjà.
+var bees_inside: int:
+	get:
+		return _comb_bees.size()
 
 # =============================================================================
 # Cycle de vie
@@ -209,18 +217,48 @@ func clear_spawn_positions() -> void:
 	_used_spawn_positions.clear()
 	
 # =============================================================================
+# Abeilles sur le cadre (évitement)
+# =============================================================================
+
+## Déclare [param bee] présente sur le cadre.
+func register_comb_bee(bee: Bee) -> void:
+	if not _comb_bees.has(bee):
+		_comb_bees.append(bee)
+
+## Retire [param bee] du cadre (départ en vol ou suppression).
+func unregister_comb_bee(bee: Bee) -> void:
+	_comb_bees.erase(bee)
+
+## Abeilles de la ruche à moins de [param radius] de [param pos], sans [param exclude].
+## Parcours complet de la liste : suffisant pour 200 abeilles, à remplacer par une
+## grille spatiale si le profileur montre que ça coûte trop cher.
+func get_comb_bees_near(pos: Vector3, radius: float, exclude: Bee = null) -> Array[Bee]:
+	var result: Array[Bee] = []
+	# Comparaison des carrés : évite une racine carrée par abeille
+	var r2 := radius * radius
+	for other in _comb_bees:
+		if other != exclude and other.global_position.distance_squared_to(pos) < r2:
+			result.append(other)
+	return result
+	
+# =============================================================================
 # Danses (boucle positive : recrutement)
 # =============================================================================
 
 # =============================================================================
-# Présence des abeilles (appelé par Bee.change_state)
+# Présence des abeilles (appelé par Bee)
 # =============================================================================
 
-func bee_entered() -> void:
-	bees_inside += 1
+## Déclare [param bee] présente dans la ruche (passage Dehors → Ruche ou apparition).
+func bee_entered(bee: Bee) -> void:
+	# Garde-fou : une abeille ne doit pas être comptée deux fois
+	if not _comb_bees.has(bee):
+		_comb_bees.append(bee)
 
-func bee_left() -> void:
-	bees_inside = maxi(bees_inside - 1, 0)
+
+## Retire [param bee] de la ruche (départ en vol ou suppression).
+func bee_left(bee: Bee) -> void:
+	_comb_bees.erase(bee)
 	
 # =============================================================================
 # Son
@@ -234,4 +272,5 @@ func _update_buzz_volume(delta: float) -> void:
 		# Sommation de sources indépendantes : +10·log10(N) dB
 		target = buzz_single_db + linear_to_db(sqrt(float(bees_inside)))
 	# Lissage exponentiel, indépendant du framerate
+	# volume(N) = volume d’une abeille + 10·log₁₀(N)
 	_buzz.volume_db = lerpf(_buzz.volume_db, target, 1.0 - exp(-buzz_smoothing * delta))
