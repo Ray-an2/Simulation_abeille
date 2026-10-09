@@ -57,7 +57,7 @@ class_name Simulation extends Node3D
 @export_range(0.0, 1.0) var profitability_low: float = 0.2
 
 ## Quantité de nectar qu'une abeille peut transporter. FORAGE s'arrête une fois atteinte.
-@export var forage_capacity: float = 1.0
+@export var forage_capacity: float = 10.0
 
 @export_group("Déplacement")
 
@@ -126,5 +126,6 @@ func _ready() -> void:
 		bees_container.add_child(bee)	# Position d'apparition
 
 func _process(delta: float) -> void:
-	sim_hours += hours_from(delta)
-	sky.current_time += hours_from(delta) # Recalcule le soleil à chaque changement
+	var dh := hours_from(delta)
+	sim_hours += dh
+	sky.current_time += dh # Recalcule le soleil à chaque changement

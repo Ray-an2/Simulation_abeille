@@ -12,11 +12,11 @@ enum State { AVAILABLE, BUSY, EMPTY }
 ## Type d'espèces disponibles
 enum Species { LILY, ROSE_BLUE, ROSE_RED }
 
-## Temps de recharge (seconde réel) par espèce défini
+## Temps de recharge (heure simulées) par espèce défini
 const RECHARGE_TIME := {
-	Species.LILY: 720.0,
-	Species.ROSE_BLUE: 240.0,
-	Species.ROSE_RED: 120.0,
+	Species.LILY: 2.0,
+	Species.ROSE_BLUE: 4.0,
+	Species.ROSE_RED: 6.0,
 }
 
 ## Type de l'espèce 
@@ -62,7 +62,7 @@ func request_foraging() -> bool:
 	if state != State.AVAILABLE or locked:
 		return false
 	locked = true
-	_timer = randf_range(4.0, 5.0) # duration = random(4,5)
+	_timer = randf_range(4.0, 5.0) / 60.0 # duration = random(4,5) secondes réel
 	_change_state(State.BUSY)
 	set_process(true)
 	return true
