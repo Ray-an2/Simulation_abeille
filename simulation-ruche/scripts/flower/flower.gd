@@ -48,7 +48,7 @@ func setup(sim: Simulation) -> void:
 	resource = simulation.max_resource
 
 func _process(delta: float) -> void:
-	_timer -= delta
+	_timer -= simulation.hours_from(delta)
 	if _timer > 0.0:
 		return
 	match state:
