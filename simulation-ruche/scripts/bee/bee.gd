@@ -25,6 +25,10 @@ var simulation: Simulation
 # Données partagées entre les états
 # =============================================================================
 
+## Locomotion sur le cadre (cap, vitesse, évitement), partagée par les états Ruche.
+## Conservée d'un état à l'autre, réinitialisée à chaque arrivée dans la ruche.
+var walker: CombWalker
+
 ## Quantité de nectar transportée. Remplie en FORAGE, vidée en UNLOAD.
 var nectar: float = 0.0
 
@@ -64,6 +68,7 @@ func _ready() -> void:
 	idle = IdleState.new(self)
 	scout = ScoutState.new(self)
 	return_home = ReturnState.new(self)
+	walker = CombWalker.new(self)
 	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
 	_buzz.pitch_scale = randf_range(0.9, 1.1)
 	change_state(idle)
@@ -94,10 +99,12 @@ func change_state(next: BeeState) -> void:
 
 	current_state.enter()
 
-## Prévient la ruche et allume/coupe le bourdonnement individuel.
+## Prévient la ruche, réinitialise la marche et allume/coupe le bourdonnement individuel.
 func _on_location_changed(inside: bool) -> void:
 	if inside:
 		hive.bee_entered(self)
+		# Arrivée sur le cadre : l'abeille repart immobile, dans la direction où elle regarde
+		walker.reset()
 		_buzz.stop()
 	else:
 		hive.bee_left(self)
