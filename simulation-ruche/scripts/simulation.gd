@@ -13,6 +13,17 @@ class_name Simulation extends Node3D
 ## Scène instanciée pour chaque abeille (bee.tscn). À assigner dans l'inspecteur.
 @export var bee_scene: PackedScene
 
+@export_group("Temps")
+
+## Nœud Sky3D de la scène
+@export var sky: Sky3D
+
+## Durée réelle (secondes) d'une journée simulée de 24 h
+@export var day_duration_seconds := 600.0
+
+## Heure de départ de la simulation
+@export_range(0.0, 24.0) var start_hour := 8.0
+
 @export_group("Population")
 
 ## Nombre d'abeilles créées au lancement.
@@ -46,7 +57,7 @@ class_name Simulation extends Node3D
 @export_range(0.0, 1.0) var profitability_low: float = 0.2
 
 ## Quantité de nectar qu'une abeille peut transporter. FORAGE s'arrête une fois atteinte.
-@export var forage_capacity: float = 1.0
+@export var forage_capacity: float = 10.0
 
 @export_group("Déplacement")
 
@@ -80,8 +91,22 @@ var flowers: Array[Flower] = []
 ## Quantite de nectar récolter de l'abeille
 @export var harvest_amount := 5.0
 
+## Retourne l'heure
+func hours_from(delta: float) -> float:
+	return delta * 24.0 / day_duration_seconds
+
+## Retourne true s'il y fait jour, sinon false
+func is_daytime() -> bool:
+	return sky.is_day()
+
+# total heures écoulées
+var sim_hours := 0.0
+
 ## Crée [member bee_count] abeilles et leur injecte la ruche et la simulation.
 func _ready() -> void:
+	# Horloge unique
+	sky.game_time_enabled = false
+	sky.current_time = start_hour
 	# La ruche doit avoir calculé la zone du cadre avant qu'on y place les abeilles
 	if not hive.is_node_ready():
 		await hive.ready
@@ -99,3 +124,8 @@ func _ready() -> void:
 		# local du conteneur.
 		bee.transform = bees_container.global_transform.affine_inverse() * hive.get_random_spawn_transform()
 		bees_container.add_child(bee)	# Position d'apparition
+
+func _process(delta: float) -> void:
+	var dh := hours_from(delta)
+	sim_hours += dh
+	sky.current_time += dh # Recalcule le soleil à chaque changement

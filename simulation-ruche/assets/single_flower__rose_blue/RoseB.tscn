@@ -4,10 +4,10 @@
 [ext_resource type="Script" uid="uid://c0rn8tqubfrxl" path="res://scripts/flower/flower.gd" id="2_wm8ia"]
 
 [node name="RoseB" type="Node3D" unique_id=1386328174]
+script = ExtResource("2_wm8ia")
 
 [node name="Model" parent="." unique_id=817535148 instance=ExtResource("1_wddbc")]
 transform = Transform3D(-4.3711385e-08, 0, -0.99999994, 0, 1, 0, 0.99999994, 0, -4.3711385e-08, 0.17, 0, 0)
-script = ExtResource("2_wm8ia")
 
 [node name="PistilMarker" type="Marker3D" parent="." unique_id=841606920]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0029117279, 0.06473079, 0.0092818625)
