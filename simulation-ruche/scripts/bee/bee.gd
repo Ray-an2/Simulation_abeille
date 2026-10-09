@@ -44,14 +44,8 @@ var known_profitability: float = 0.0
 # États
 # =============================================================================
 
-## Attente dans la ruche (jaune). État initial.
+# Attente dans la ruche (jaune). État initial.
 var idle: IdleState
-
-## Sortie à pied jusqu'à la planche d'envol, puis décollage (voir LeaveState.then()).
-var leave_hive: LeaveState
-
-## Entrée à pied de la planche d'envol jusqu'au cadre.
-var enter_hive: EnterState
 
 ## Exploration à la recherche d'une fleur, avec timeout.
 var scout: ScoutState
@@ -72,8 +66,6 @@ func _ready() -> void:
 		"Bee '%s' : hive=%s, simulation=%s — doivent être assignés avant add_child()"
 		% [name, hive, simulation])
 	idle = IdleState.new(self)
-	leave_hive = LeaveState.new(self)
-	enter_hive = EnterState.new(self)
 	scout = ScoutState.new(self)
 	return_home = ReturnState.new(self)
 	walker = CombWalker.new(self)

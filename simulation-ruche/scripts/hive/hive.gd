@@ -40,29 +40,18 @@ const SPAWN_MAX_ATTEMPTS := 5
 ## Bourdonnement collectif de la colonie.
 @onready var _buzz: AudioStreamPlayer3D = %HiveBuzz
 
-@export_group("Sortie")
-
-## Demi-largeur (m) du couloir de sortie. Chaque abeille marche sur sa propre voie,
-## à une distance latérale de la courbe tirée au hasard : celles qui sortent d'un côté,
-## celles qui entrent de l'autre.
-@export var lane_half_width: float = 0.004
-
 # =============================================================================
 # Nœuds de la scène
 # =============================================================================
 
 ## Point où les abeilles se posent en rentrant (fin de RETURN).
 @onready var _landing: Marker3D = %LandingMarker
-
+## Entrée de la ruche : passage entre l'extérieur et le cadre.
+@onready var _entrance: Marker3D = %EntranceMarker
 ## Zone de danse sur le cadre.
 @onready var _dance: Marker3D = %DanceMarker
-
 ## Centre de la zone d'attente sur le cadre (apparition, IDLE).
 @onready var _spawn: Marker3D = %SpawnMarker
-
-## Chemin à pied entre le bas du cadre (début) et la planche d'envol (fin).
-## Parcouru dans un sens par LEAVE, dans l'autre par ENTER.
-@onready var _exit_path: Path3D = %ExitPath
 
 # =============================================================================
 # État interne
@@ -101,23 +90,17 @@ func _process(delta: float) -> void:
 # Points de passage
 # =============================================================================
 
-func get_spawn_transform() -> Transform3D:
-	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
-
 func get_landing_position() -> Vector3:
 	return _landing.global_position
 
+func get_entrance_position() -> Vector3:
+	return _entrance.global_position
+
 func get_dance_position() -> Vector3:
 	return _dance.global_position
-	
-## Chemin à pied entre le cadre et la planche d'envol (LEAVE / ENTER).
-func get_exit_path() -> Path3D:
-	return _exit_path
 
-## Premier point du chemin de sortie, sur le cadre : là où les abeilles qui sortent
-## quittent la déambulation pour suivre le chemin.
-func get_exit_path_start() -> Vector3:
-	return _exit_path.global_transform * _exit_path.curve.get_point_position(0)
+func get_spawn_transform() -> Transform3D:
+	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
 	
 # =============================================================================
 # Zone du cadre (déambulation en IDLE)
