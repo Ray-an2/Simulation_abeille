@@ -4,7 +4,7 @@ class_name Flower extends Node3D
 signal state_changed(new_state: State)
 
 ## Signal de fin de butinage de la fleur
-signal foraging_finished(flower: Flower, amount: float)
+signal foraging_finished(flower: Flower)
 
 ## Etat possible de la fleurs
 enum State { AVAILABLE, BUSY, EMPTY }
@@ -71,7 +71,7 @@ func request_foraging() -> bool:
 func _finish_foraging() -> void:
 	resource -= simulation.harvest_amount
 	locked = false
-	foraging_finished.emit(self, simulation.harvest_amount) # butinage terminé
+	foraging_finished.emit(self) # butinage terminé
 
 	if resource > simulation.threshold:
 		_change_state(State.AVAILABLE) # changement d'état
