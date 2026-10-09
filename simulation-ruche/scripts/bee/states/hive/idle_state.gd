@@ -71,9 +71,10 @@ func enter() -> void:
 func update(delta: float) -> BeeState:
 	# TODO : détecter une danse à proximité (→ WATCH)
 
-	# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate
+	# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
+	# L'abeille sort d'abord à pied, puis explore une fois dehors.
 	if randf() < bee.simulation.p_scout * delta:
-		return bee.scout
+		return bee.leave_hive.then(bee.scout)
 
 	_update_phase(delta)
 	if _walking:

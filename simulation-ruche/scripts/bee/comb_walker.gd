@@ -36,6 +36,16 @@ const AVOID_TURN_RATE := 6.0
 const AVOID_BRAKE := 0.7
 
 # =============================================================================
+# Types
+# =============================================================================
+
+## Surface sur laquelle marche l'abeille.
+enum Surface {
+	COMB,    ## Cadre : borné au rectangle de déambulation, normale du cadre
+	FLOOR,   ## Plancher de la ruche : non borné, verticale du monde
+}
+
+# =============================================================================
 # Variables
 # =============================================================================
 
@@ -53,6 +63,9 @@ var current_speed := 0.0
 ## quand une voisine est pile devant et qu'aucun côté n'est meilleur.
 var _last_turn_sign := 1.0
 
+## Surface parcourue actuellement. Fixée par reset().
+var surface := Surface.COMB
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
@@ -60,16 +73,22 @@ var _last_turn_sign := 1.0
 func _init(owner_bee: Bee) -> void:
 	bee = owner_bee
 
-## Réinitialise le walker quand l'abeille arrive sur le cadre (apparition ou retour) :
-## immobile, cap = avant de l'abeille (+Z) projeté dans le plan du cadre.
-func reset() -> void:
+## Réinitialise le walker sur [param new_surface] : immobile, cap = avant de l'abeille (+Z)
+## projeté sur la surface. Appelé à l'arrivée sur le cadre (apparition, retour)
+## et à chaque changement de surface (chute sur le plancher, saut sur le cadre).
+func reset(new_surface: Surface = Surface.COMB) -> void:
+	surface = new_surface
 	current_speed = 0.0
-	var normal := bee.hive.get_comb_normal()
+	var normal := get_normal()
 	heading = bee.global_basis.z.slide(normal).normalized()
-	# Abeille arrivée perpendiculaire au cadre : la projection est nulle,
+	# Abeille perpendiculaire à la surface : la projection est nulle,
 	# on prend son axe latéral comme cap arbitraire
 	if heading.is_zero_approx():
 		heading = bee.global_basis.x.slide(normal).normalized()
+
+## Normale de la surface parcourue : vecteur haut de l'abeille et axe de ses virages.
+func get_normal() -> Vector3:
+	return bee.hive.get_comb_normal() if surface == Surface.COMB else Vector3.UP
 
 # =============================================================================
 # Intentions (appelées par les états)
@@ -80,14 +99,14 @@ func reset() -> void:
 func turn(angle: float) -> void:
 	if angle == 0.0:
 		return
-	heading = heading.rotated(bee.hive.get_comb_normal(), angle)
+	heading = heading.rotated(get_normal(), angle)
 	_last_turn_sign = signf(angle)
 
 ## Oriente progressivement le cap vers [param point], d'au plus [param rate] rad/s.
 ## Utilisé pour revenir des bords, et plus tard pour suivre une danseuse (WATCH)
 ## ou rejoindre une receveuse (UNLOAD).
 func steer_towards(point: Vector3, rate: float, delta: float) -> void:
-	var normal := bee.hive.get_comb_normal()
+	var normal := get_normal()
 	var to_point := (point - bee.global_position).slide(normal)
 	# Déjà sur le point : aucune direction à viser
 	if to_point.length_squared() < 0.0000000001:
@@ -102,16 +121,24 @@ func steer_towards(point: Vector3, rate: float, delta: float) -> void:
 ## puis avance d'une frame en évitant voisines et bords.
 ## À appeler à chaque frame par l'état Ruche actif, y compris en pause (target_speed = 0)
 ## pour que l'abeille finisse de freiner.
-func step(target_speed: float, delta: float) -> void:
+## [param steer_from_edges] : sur le cadre, réoriente le cap vers le centre près d'un bord.
+## À désactiver quand l'état vise volontairement le bord (sortie de ruche), sinon
+## les deux virages se contrarient. L'abeille reste de toute façon bornée au cadre.
+func step(target_speed: float, delta: float, steer_from_edges: bool = true) -> void:
 	var rate := ACCELERATION if target_speed > current_speed else DECELERATION
 	current_speed = move_toward(current_speed, target_speed, rate * delta)
 	if current_speed <= 0.0:
 		return
 
-	var normal := bee.hive.get_comb_normal()
+	var normal := get_normal()
 	var brake := _avoid_neighbours(normal, delta)
-	# Bords traités après l'évitement : une voisine ne peut pas pousser l'abeille hors du cadre
-	var target := _keep_inside(delta)
+	var target: Vector3
+	if surface == Surface.COMB:
+		# Bords traités après l'évitement : une voisine ne peut pas pousser l'abeille hors du cadre
+		target = _keep_inside(delta, steer_from_edges)
+	else:
+		# Plancher : pas de bornes, on vise simplement un point devant
+		target = bee.global_position + heading * LOOK_AHEAD
 	bee.walk_towards(target, delta, normal, current_speed * brake)
 
 ## Renvoie true si l'abeille est complètement arrêtée.
@@ -125,7 +152,7 @@ func is_stopped() -> bool:
 ## d'autant plus qu'elles sont dans l'axe : l'abeille ne réagit pas à celles
 ## qui l'approchent par l'arrière.
 func get_avoidance(forward: Vector3 = Vector3.ZERO) -> Vector3:
-	var normal := bee.hive.get_comb_normal()
+	var normal := get_normal()
 	var away := Vector3.ZERO
 	for other in bee.hive.get_comb_bees_near(bee.global_position, AVOID_RADIUS, bee):
 		# Vecteur voisine → abeille, ramené dans le plan du cadre
@@ -180,11 +207,11 @@ func _avoid_neighbours(normal: Vector3, delta: float) -> float:
 	# Plus la voisine est proche, plus l'abeille freine
 	return 1.0 - AVOID_BRAKE * urgency
 
-## Renvoie le point visé devant l'abeille, borné au cadre. Si ce point sortait du cadre,
-## le cap est réorienté progressivement vers le centre.
-func _keep_inside(delta: float) -> Vector3:
+## Renvoie le point visé devant l'abeille, borné au cadre. Si ce point sortait du cadre
+## et que [param steer_from_edges] est vrai, le cap est réorienté progressivement vers le centre.
+func _keep_inside(delta: float, steer_from_edges: bool) -> Vector3:
 	var ahead := bee.global_position + heading * LOOK_AHEAD
 	var clamped := bee.hive.clamp_to_comb(ahead)
-	if not ahead.is_equal_approx(clamped):
+	if steer_from_edges and not ahead.is_equal_approx(clamped):
 		steer_towards(bee.hive.get_comb_center(), EDGE_TURN_RATE, delta)
 	return clamped

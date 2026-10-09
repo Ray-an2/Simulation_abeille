@@ -15,7 +15,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0602156, -0.27811)
 
 [node name="EntranceMarker" type="Marker3D" parent="." unique_id=2038964992]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000862888, 0.0614109, -0.254323)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000862888, 0.060699854, -0.237784)
 
 [node name="DanceMarker" type="Marker3D" parent="." unique_id=362317231]
 unique_name_in_owner = true

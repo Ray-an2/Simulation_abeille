@@ -27,6 +27,13 @@ const SPAWN_MAX_ATTEMPTS := 5
 ## Distance minimale (m) entre deux abeilles à l'apparition.
 @export var spawn_min_spacing: float = 0.01
 
+@export_group("Sortie")
+
+## Distance (m) entre le cadre et le point où une abeille qui se laisse tomber touche
+## le plancher, le long de la normale du cadre. Évite qu'elle traverse la traverse
+## du bas du cadre en tombant. À ajuster à la géométrie de la ruche.
+@export var drop_clearance: float = 0.01
+
 @export_group("Son")
 
 ## Volume (dB) du bourdonnement pour une seule abeille dans la ruche.
@@ -102,6 +109,11 @@ func get_dance_position() -> Vector3:
 func get_spawn_transform() -> Transform3D:
 	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
 	
+## Hauteur (Y global) du centre d'une abeille posée sur le plancher de la ruche.
+## Donnée par EntranceMarker, placé au niveau du plancher à l'entrée.
+func get_floor_height() -> float:
+	return _entrance.global_position.y
+	
 # =============================================================================
 # Zone du cadre (déambulation en IDLE)
 # =============================================================================
@@ -162,6 +174,13 @@ func get_comb_point_near(from: Vector3, radius: float) -> Vector3:
 	# Décalage aléatoire dans le plan du cadre (axes X et Z du marqueur)
 	var offset := b.x * randf_range(-radius, radius) + b.z * randf_range(-radius, radius)
 	return clamp_to_comb(from + offset)
+
+## Distance (m) entre [param pos] et le bord inférieur de la zone de déambulation,
+## mesurée dans le plan du cadre (0 = sur le bord, positive au-dessus).
+## Suppose que l'axe Z de SpawnMarker monte le long du cadre (bas = côté -Z).
+func get_comb_bottom_distance(pos: Vector3) -> float:
+	var local := _spawn.global_transform.affine_inverse() * pos
+	return local.z - (_comb_center_local.z - spawn_extent.y)
 	
 ## Ramène [param point] dans le rectangle du cadre et dans son plan.
 ## Renvoie le point inchangé s'il y est déjà.
@@ -219,15 +238,6 @@ func clear_spawn_positions() -> void:
 # =============================================================================
 # Abeilles sur le cadre (évitement)
 # =============================================================================
-
-## Déclare [param bee] présente sur le cadre.
-func register_comb_bee(bee: Bee) -> void:
-	if not _comb_bees.has(bee):
-		_comb_bees.append(bee)
-
-## Retire [param bee] du cadre (départ en vol ou suppression).
-func unregister_comb_bee(bee: Bee) -> void:
-	_comb_bees.erase(bee)
 
 ## Abeilles de la ruche à moins de [param radius] de [param pos], sans [param exclude].
 ## Parcours complet de la liste : suffisant pour 200 abeilles, à remplacer par une

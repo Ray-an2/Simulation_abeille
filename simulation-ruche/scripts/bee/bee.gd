@@ -47,6 +47,12 @@ var known_profitability: float = 0.0
 # Attente dans la ruche (jaune). État initial.
 var idle: IdleState
 
+## Sortie à pied jusqu'à la planche d'envol, puis décollage (voir LeaveState.then()).
+var leave_hive: LeaveState
+
+## Entrée à pied de la planche d'envol jusqu'au cadre.
+var enter_hive: EnterState
+
 ## Exploration à la recherche d'une fleur, avec timeout.
 var scout: ScoutState
 
@@ -66,6 +72,8 @@ func _ready() -> void:
 		"Bee '%s' : hive=%s, simulation=%s — doivent être assignés avant add_child()"
 		% [name, hive, simulation])
 	idle = IdleState.new(self)
+	leave_hive = LeaveState.new(self)
+	enter_hive = EnterState.new(self)
 	scout = ScoutState.new(self)
 	return_home = ReturnState.new(self)
 	walker = CombWalker.new(self)
@@ -139,6 +147,15 @@ func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP, speed
 func is_near(target: Vector3, radius: float) -> bool:
 	# Comparaison des carrés : évite une racine carrée à chaque appel
 	return global_position.distance_squared_to(target) <= radius * radius
+
+## Se déplace vers [param target] à [param speed] m/s, sans s'orienter dans le sens
+## du mouvement : l'abeille tourne progressivement pour regarder vers [param facing],
+## avec [param up] comme vecteur haut. Sert aux petits sauts entre le bas du cadre
+## et le plancher, où elle se retourne en tombant.
+func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, delta: float) -> void:
+	_face(facing, up, delta)
+	# move_toward ne dépasse jamais la cible : arrivée exacte
+	global_position = global_position.move_toward(target, speed * delta)
 	
 # =============================================================================
 # Animation (appelé par les états)
@@ -162,11 +179,12 @@ func play_animation(anim_name: StringName) -> void:
 ## [param step] est déjà multiplié par delta ; [param delta] sert à la rotation.
 func _move_towards(target: Vector3, step: float, up: Vector3, delta: float) -> void:
 	var to_target := target - global_position
-	# Déjà sur la cible : on ne bouge pas, et on évite un look_at sur un vecteur nul
-	if to_target.length_squared() < 0.000001:
-		return
-	_face(to_target, up, delta)
-	# move_toward ne dépasse jamais la cible : pas d'oscillation à l'arrivée
+	# Presque sur la cible : on finit d'avancer sans tourner, car la direction
+	# d'un vecteur quasi nul n'a pas de sens pour l'orientation
+	if to_target.length_squared() >= 0.000001:
+		_face(to_target, up, delta)
+	# move_toward ne dépasse jamais la cible : pas d'oscillation à l'arrivée,
+	# et la cible est atteinte exactement
 	global_position = global_position.move_toward(target, step)
 	
 ## Tourne progressivement l'abeille vers [param direction], avec [param up] comme vecteur
