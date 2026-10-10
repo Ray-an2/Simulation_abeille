@@ -120,7 +120,7 @@ class_name Simulation extends Node3D
 @export var homing_distance: float = 0.5
 
 ## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
-@export var perception_radius: float = 3.0
+@export var perception_radius: float = 15.0
 
 ## Distance (unités) en dessous de laquelle l'abeille est considérée arrivée.
 @export var arrival_radius: float = 0.05
