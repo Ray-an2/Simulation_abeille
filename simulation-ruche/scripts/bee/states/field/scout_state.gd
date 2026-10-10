@@ -5,7 +5,6 @@ class_name ScoutState extends FieldState
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-const SCOUT_DURATION := 20.0       # secondes avant d'abandonner et de rentrer
 
 # Errance (quand aucune fleur n'est à portée)
 const TURN_INTERVAL_MIN := 0.8     # secondes entre deux changements de cap
@@ -37,7 +36,7 @@ var _target: Vector3    # position d'atterrissage de la fleur visée
 func enter() -> void:
 	#bee.play_animation(&"_bee_take_off")
 	bee.play_animation(&"_bee_hover")
-	_remaining = SCOUT_DURATION
+	_remaining = bee.simulation.scout_timeout
 	_flower = null
 	_direction = bee.global_transform.basis.z.normalized()
 	_target_direction = _direction
@@ -45,20 +44,18 @@ func enter() -> void:
 
 
 func update(delta: float) -> BeeState:
-	_remaining -= delta
-	if _remaining <= 0.0:
-		return bee.return_home
-
 	_update_flower_search()
-
+	
 	if _flower != null:
 		bee.fly_towards(_target, delta)
 		if bee.is_near(_target, bee.simulation.arrival_radius):
 			bee.known_flower = _flower
 			return bee.forage
 	else:
+		_remaining -= delta
+		if _remaining <= 0.0:
+			return bee.return_home
 		_wander(delta)
-
 	return null
 
 
