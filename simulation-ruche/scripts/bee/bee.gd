@@ -191,26 +191,48 @@ func _exit_tree() -> void:
 # Déplacement (appelé par les états)
 # =============================================================================
 
-## Vole vers [param target] à la vitesse [member Simulation.fly_speed], en contournant
-## les obstacles et en restant au-dessus du sol.
+## Vole vers [param target] : le corps tourne progressivement vers le point visé
+## et l'abeille avance dans l'axe de son corps. Contourne les obstacles, reste au-dessus du sol.
 ## À appeler à chaque update() tant que la cible n'est pas atteinte.
-# --- bee.gd ---
-
 func fly_towards(target: Vector3, delta: float) -> void:
 	var goal := _flight_goal(target)
-
-	# Vitesse maximale qui permet encore de s'arrêter sur la cible : v = √(2·a·d).
-	# Distance mesurée à la cible finale, pas au point de détour, pour ne pas
-	# freiner à chaque contournement d'obstacle.
+	var to_goal := goal - global_position
 	var dist := global_position.distance_to(target)
+
+	# --- Vitesse voulue ---
+	# Plafond de freinage : vitesse maximale qui permet encore de s'arrêter sur la cible
 	var brake_limit := sqrt(2.0 * simulation.fly_deceleration * dist)
 	var wanted := clampf(brake_limit, simulation.landing_speed, simulation.fly_speed)
+	# Cible derrière ou sur le côté : on ralentit pour virer serré.
+	# Alignement ramené de [-1, 1] à [0, 1] : 1 droit devant, 0 pile derrière.
+	var forward := global_basis.z.normalized()   # avant du modèle sur +Z (glTF)
+	if not to_goal.is_zero_approx():
+		var alignment := (forward.dot(to_goal.normalized()) + 1.0) * 0.5
+		wanted *= lerpf(simulation.turning_speed_factor, 1.0, alignment)
 
 	# La vitesse courante rejoint la vitesse voulue sans à-coup
 	var rate := simulation.fly_acceleration if wanted > _flight_speed else simulation.fly_deceleration
 	_flight_speed = move_toward(_flight_speed, wanted, rate * delta)
 
-	_move_towards(goal, _flight_speed * delta, Vector3.UP, delta)
+	# --- Orientation : le corps tourne vers le point visé, à turn_speed ---
+	if to_goal.length_squared() >= 0.000001:
+		_face(to_goal, Vector3.UP, delta)
+
+	# --- Déplacement ---
+	var step := _flight_speed * delta
+	if to_goal.length() <= step:
+		# Dernier pas : arrivée exacte sur le point visé
+		global_position = goal
+	else:
+		# Loin de la cible : droit devant (axe du corps, après rotation).
+		# Près de la cible : mélange progressif avec la direction directe,
+		# pour ne pas tourner autour sans jamais l'atteindre.
+		var homing := 1.0 - clampf(dist / simulation.homing_distance, 0.0, 1.0)
+		var move_dir := global_basis.z.normalized().lerp(to_goal.normalized(), homing)
+		# Avant et cible opposés avec homing ≈ 0,5 : le mélange s'annule, on prend la direction directe
+		if move_dir.length_squared() < 0.0001:
+			move_dir = to_goal
+		global_position += move_dir.normalized() * step
 
 	# Filet de sécurité : jamais sous le sol
 	var floor_y := get_ground_height(global_position) + simulation.ground_clearance

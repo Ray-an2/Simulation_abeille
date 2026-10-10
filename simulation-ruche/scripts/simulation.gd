@@ -76,19 +76,20 @@ class_name Simulation extends Node3D
 ## vers zéro près de la cible et l'arrivée traînerait.
 @export var landing_speed: float = 0.2
 
-## Distance (m) à la cible en dessous de laquelle l'abeille commence à ralentir.
-@export var approach_distance: float = 1.0
-
-## Fraction de fly_speed conservée au contact de la cible (0 à 1).
-## Évite que la vitesse tende vers zéro : l'abeille finit toujours par arriver.
-@export_range(0.0, 1.0) var approach_min_factor: float = 0.1
-
 ## Vitesse de marche sur le rayon (unités/s). À ajuster à l'échelle de la ruche.
 @export var walk_speed: float = 0.02
 
 ## Vitesse de rotation des abeilles (1/s). Plus la valeur est grande, plus elles
 ## s'orientent vite vers leur cible. Une valeur très grande revient à un look_at instantané.
 @export var turn_speed: float = 6.0
+
+## Fraction de la vitesse conservée quand la cible est pile derrière l'abeille.
+## Elle ralentit le temps de virer au lieu de décrire un grand arc.
+@export_range(0.1, 1.0) var turning_speed_factor: float = 0.3
+
+## Distance (m) à la cible en dessous de laquelle le mouvement bascule
+## progressivement de « droit devant » à « droit sur la cible », pour garantir l'arrivée.
+@export var homing_distance: float = 0.5
 
 ## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
 @export var perception_radius: float = 3.0
