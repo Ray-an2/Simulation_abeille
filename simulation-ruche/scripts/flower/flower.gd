@@ -53,7 +53,10 @@ func setup(sim: Simulation) -> void:
 	resource = simulation.max_resource
 
 func _process(delta: float) -> void:
-	_timer -= simulation.hours_from(delta)
+	if state == State.BUSY:
+		_timer -= delta
+	else:
+		_timer -= simulation.hours_from(delta)
 	if _timer > 0.0:
 		return
 	match state:
@@ -67,7 +70,7 @@ func request_foraging() -> bool:
 	if state != State.AVAILABLE or locked:
 		return false
 	locked = true
-	_timer = randf_range(4.0, 5.0) / 60.0 # duration = random(4,5) secondes réel
+	_timer = randf_range(simulation.foraging_time_min, simulation.foraging_time_max)
 	_change_state(State.BUSY)
 	set_process(true)
 	return true
@@ -109,7 +112,7 @@ func get_landing_position() -> Vector3:
 func get_profitability() -> float:
 	if state == State.EMPTY: return 0.0
 	var range_size := maxf(simulation.max_resource - simulation.threshold, 0.001)
-	return clampf((resource - simulation.threshold) / range_size, 0.0, 0.1) 
+	return clampf((resource - simulation.threshold) / range_size, 0.0, 1.0) 
 
 ## Détection de l'espece de fleurs
 func _detect_species() -> Species:

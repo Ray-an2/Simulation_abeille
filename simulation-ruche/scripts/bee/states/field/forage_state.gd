@@ -42,7 +42,10 @@ func update(_delta: float) -> BeeState:
 	# Sinon on tente de prendre la fleur (échoue si une autre abeille y butine)
 	if _flower.request_foraging():
 		_foraging = true
+		bee.play_animation(&"_bee_forage")
 		_flower.foraging_finished.connect(_on_foraging_finished, CONNECT_ONE_SHOT)
+	else:
+		bee.play_animation(&"_bee_idle")
 	return null
 
 ## Signal de fin de butinage par la fleur saisi
