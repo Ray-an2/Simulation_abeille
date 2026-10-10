@@ -34,6 +34,14 @@ const SPAWN_MAX_ATTEMPTS := 5
 ## du bas du cadre en tombant. À ajuster à la géométrie de la ruche.
 @export var drop_clearance: float = 0.01
 
+## Longueur (m) du tunnel d'entrée, centré sur EntranceMarker.
+@export var tunnel_length: float = 0.03
+
+## Zone de décollage et d'atterrissage sur la planche, dans le repère de LandingMarker :
+## ± landing_half_width sur X, de 0 à landing_depth sur +Z.
+@export var landing_half_width: float = 0.04
+@export var landing_depth: float = 0.01
+
 @export_group("Son")
 
 ## Volume (dB) du bourdonnement pour une seule abeille dans la ruche.
@@ -97,22 +105,45 @@ func _process(delta: float) -> void:
 # Points de passage
 # =============================================================================
 
-func get_landing_position() -> Vector3:
-	return _landing.global_position
+func get_spawn_transform() -> Transform3D:
+	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
 
 func get_entrance_position() -> Vector3:
 	return _entrance.global_position
-
-func get_dance_position() -> Vector3:
-	return _dance.global_position
-
-func get_spawn_transform() -> Transform3D:
-	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
 	
 ## Hauteur (Y global) du centre d'une abeille posée sur le plancher de la ruche.
 ## Donnée par EntranceMarker, placé au niveau du plancher à l'entrée.
 func get_floor_height() -> float:
 	return _entrance.global_position.y
+
+## Axe du tunnel d'entrée, horizontal, orienté de l'intérieur vers la planche d'envol.
+## Suppose que le tunnel est dans l'axe EntranceMarker → LandingMarker (vu de dessus).
+func get_tunnel_axis() -> Vector3:
+	return (_landing.global_position - _entrance.global_position).slide(Vector3.UP).normalized()
+
+## Extrémité intérieure du tunnel (côté cadre), au niveau du plancher.
+func get_tunnel_inner_end() -> Vector3:
+	return _entrance.global_position - get_tunnel_axis() * tunnel_length * 0.5
+
+## Extrémité extérieure du tunnel (côté planche), au niveau du plancher.
+func get_tunnel_outer_end() -> Vector3:
+	return _entrance.global_position + get_tunnel_axis() * tunnel_length * 0.5
+
+func get_landing_position() -> Vector3:
+	return _landing.global_position
+	
+## Point tiré au hasard dans la zone de décollage / atterrissage de la planche,
+## pour que les abeilles ne partent et n'arrivent pas toutes au même endroit.
+func get_random_landing_position() -> Vector3:
+	return _landing.global_transform * Vector3(
+		randf_range(-landing_half_width, landing_half_width),
+		0.0,
+		randf_range(0.0, landing_depth)
+	)
+
+func get_dance_position() -> Vector3:
+	return _dance.global_position
+	
 	
 # =============================================================================
 # Zone du cadre (déambulation en IDLE)
@@ -174,6 +205,14 @@ func get_comb_point_near(from: Vector3, radius: float) -> Vector3:
 	# Décalage aléatoire dans le plan du cadre (axes X et Z du marqueur)
 	var offset := b.x * randf_range(-radius, radius) + b.z * randf_range(-radius, radius)
 	return clamp_to_comb(from + offset)
+
+## Point du bord inférieur de la zone de déambulation le plus proche de [param pos].
+## Sert de cible aux abeilles qui descendent le cadre pour sortir.
+func get_comb_bottom_point(pos: Vector3) -> Vector3:
+	var local := _spawn.global_transform.affine_inverse() * clamp_to_comb(pos)
+	# Bas du cadre = côté -Z de SpawnMarker
+	local.z = _comb_center_local.z - spawn_extent.y
+	return _spawn.global_transform * local
 
 ## Distance (m) entre [param pos] et le bord inférieur de la zone de déambulation,
 ## mesurée dans le plan du cadre (0 = sur le bord, positive au-dessus).

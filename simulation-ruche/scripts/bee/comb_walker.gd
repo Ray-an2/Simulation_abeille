@@ -117,17 +117,12 @@ func steer_towards(point: Vector3, rate: float, delta: float) -> void:
 	var max_step := rate * delta
 	heading = heading.rotated(normal, clampf(angle, -max_step, max_step))
 
-## Fait tendre la vitesse vers [param target_speed] (facteur de walk_speed, 0 = arrêt),
-## puis avance d'une frame en évitant voisines et bords.
-## À appeler à chaque frame par l'état Ruche actif, y compris en pause (target_speed = 0)
-## pour que l'abeille finisse de freiner.
-## [param steer_from_edges] : sur le cadre, réoriente le cap vers le centre près d'un bord.
-## À désactiver quand l'état vise volontairement le bord (sortie de ruche), sinon
-## les deux virages se contrarient. L'abeille reste de toute façon bornée au cadre.
 func step(target_speed: float, delta: float, steer_from_edges: bool = true) -> void:
 	var rate := ACCELERATION if target_speed > current_speed else DECELERATION
 	current_speed = move_toward(current_speed, target_speed, rate * delta)
 	if current_speed <= 0.0:
+		# Arrêt complet : walk_towards() n'est pas appelée, on repasse nous-mêmes à _bee_idle
+		bee.play_walk(0.0)
 		return
 
 	var normal := get_normal()
@@ -139,6 +134,7 @@ func step(target_speed: float, delta: float, steer_from_edges: bool = true) -> v
 	else:
 		# Plancher : pas de bornes, on vise simplement un point devant
 		target = bee.global_position + heading * LOOK_AHEAD
+	# walk_towards() règle aussi la cadence des pattes, freinage compris
 	bee.walk_towards(target, delta, normal, current_speed * brake)
 
 ## Renvoie true si l'abeille est complètement arrêtée.

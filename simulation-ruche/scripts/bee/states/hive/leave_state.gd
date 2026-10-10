@@ -1,24 +1,20 @@
 class_name LeaveState extends HiveState
-## Sortie de la ruche : descend le cadre en dérivant vers le côté de l'entrée,
-## se laisse tomber sur le plancher en se retournant, marche jusqu'à l'entrée
-## puis jusqu'à la planche d'envol, et décolle vers l'état prévu (SCOUT ou GO).
+## Sortie de la ruche : descend le cadre vers un point du bord inférieur proche de l'entrée,
+## se laisse tomber sur le plancher en se retournant, rejoint le tunnel, le traverse,
+## puis marche jusqu'à un point de la planche d'envol et décolle vers l'état prévu.
 ## Usage depuis un autre état : return bee.leave_hive.then(bee.scout)
 
 # =============================================================================
 # Constantes
 # =============================================================================
 
-## Vitesse de virage (rad/s) vers le bas du cadre, côté entrée. Plus faible que les
-## virages aléatoires : à court terme l'abeille zigzague, en moyenne elle descend.
+## Écart maximal (m), le long du bas du cadre, autour du point le plus proche de l'entrée.
+## Les abeilles tombent à des endroits différents et convergent ensuite vers le tunnel.
+const DESCENT_SPREAD := 0.05
+
+## Vitesse de virage (rad/s) vers le but sur le cadre : plus faible que les virages
+## aléatoires, à court terme l'abeille zigzague, en moyenne elle descend.
 const DESCENT_STEER_RATE := 1.5
-
-## Vitesse de virage (rad/s) vers l'entrée sur le plancher : trajet plus direct.
-const FLOOR_STEER_RATE := 5.0
-
-## Vitesse de virage aléatoire maximale (rad/s) et intervalle (s) entre deux tirages.
-const MAX_TURN_RATE := 1.5
-const TURN_CHANGE_MIN := 0.2
-const TURN_CHANGE_MAX := 0.8
 
 ## Distance (m) au bord inférieur du cadre en dessous de laquelle l'abeille se laisse tomber.
 const BOTTOM_TOLERANCE := 0.003
@@ -26,9 +22,20 @@ const BOTTOM_TOLERANCE := 0.003
 ## Vitesse (m/s) de la chute vers le plancher : nettement plus rapide que la marche.
 const DROP_SPEED := 0.15
 
-## Distance (m) à l'entrée en dessous de laquelle l'abeille se dirige vers la planche.
-## Supérieure au rayon de virage (walk_speed / FLOOR_STEER_RATE), sinon elle tournerait autour.
-const ENTRANCE_RADIUS := 0.008
+## Distance (m) entre le point d'approche et l'entrée du tunnel, dans l'axe du tunnel.
+## Laisse à l'abeille la place de s'aligner avant d'entrer.
+const APPROACH_DISTANCE := 0.02
+
+## Marche vers le point d'approche : tendance (rad/s), virages aléatoires (rad/s)
+## et distance d'arrivée (m), supérieure au rayon de virage.
+const FLOOR_STEER_RATE := 3.0
+const FLOOR_TURN_RATE := 2.0
+const APPROACH_RADIUS := 0.01
+
+## Traversée du tunnel : guidage serré, presque pas d'errance.
+const TUNNEL_STEER_RATE := 8.0
+const TUNNEL_TURN_RATE := 0.3
+const TUNNEL_EXIT_RADIUS := 0.005
 
 ## Distance (m) de fin des déplacements en ligne droite (move_toward atteint la cible exactement).
 const EXACT_RADIUS := 0.0005
@@ -39,10 +46,11 @@ const EXACT_RADIUS := 0.0005
 
 ## Étapes de la sortie.
 enum Phase {
-	DESCEND,       ## Descente du cadre, avec une tendance vers le côté de l'entrée
-	DROP,          ## Chute sur le plancher en se retournant
-	TO_ENTRANCE,   ## Marche sur le plancher jusqu'à l'entrée
-	TO_LANDING,    ## Marche de l'entrée jusqu'à la planche d'envol
+	DESCEND,         ## Descente du cadre vers le but sur le bord inférieur
+	DROP,            ## Chute sur le plancher en se retournant
+	TO_TUNNEL,       ## Marche sur le plancher jusqu'au point d'approche du tunnel
+	THROUGH_TUNNEL,  ## Traversée du tunnel jusqu'à son extrémité extérieure
+	TO_TAKEOFF,      ## Marche sur la planche jusqu'au point de décollage
 }
 
 # =============================================================================
@@ -55,12 +63,14 @@ var _next: BeeState
 ## Étape en cours.
 var _phase := Phase.DESCEND
 
+## But sur le bord inférieur du cadre, propre à chaque sortie.
+var _descent_goal := Vector3.ZERO
+
 ## Point du plancher visé pendant la chute.
 var _drop_target := Vector3.ZERO
 
-## Vitesse de virage aléatoire actuelle (rad/s) et temps avant le prochain tirage (s).
-var _turn_rate := 0.0
-var _turn_change_time := 0.0
+## Point de décollage sur la planche, propre à chaque sortie.
+var _takeoff := Vector3.ZERO
 
 # =============================================================================
 # Méthodes de l'état
@@ -74,54 +84,57 @@ func then(next: BeeState) -> LeaveState:
 
 func enter() -> void:
 	assert(_next != null, "LeaveState : état suivant non défini, utiliser then()")
-	bee.play_animation(&"_bee_idle")
 	_phase = Phase.DESCEND
-	_turn_change_time = 0.0   # premier virage aléatoire dès la première frame
+	_reset_wander()
+
+	# But de descente : point du bas du cadre proche de l'entrée, décalé au hasard
+	var hive := bee.hive
+	var near_entrance := hive.get_comb_point_near(hive.clamp_to_comb(hive.get_entrance_position()), DESCENT_SPREAD)
+	_descent_goal = hive.get_comb_bottom_point(near_entrance)
 
 func update(delta: float) -> BeeState:
-	var entrance := bee.hive.get_entrance_position()
+	var hive := bee.hive
 
 	match _phase:
 		Phase.DESCEND:
-			# Tendance vers le point du cadre le plus proche de l'entrée (bas du cadre,
-			# côté entrée), combinée aux virages aléatoires : trajectoire sinueuse
-			var goal := bee.hive.clamp_to_comb(entrance)
-			_random_turn(delta)
-			bee.walker.steer_towards(goal, DESCENT_STEER_RATE, delta)
 			# Sans retour vers le centre : il contrarierait la descente vers le bord
-			bee.walker.step(1.0, delta, false)
+			_walk_to(_descent_goal, DESCENT_STEER_RATE, 0.0, delta, WANDER_TURN_RATE, false)
 			# Bord du bas atteint, n'importe où : l'abeille se laisse tomber
-			if bee.hive.get_comb_bottom_distance(bee.global_position) < BOTTOM_TOLERANCE:
+			if hive.get_comb_bottom_distance(bee.global_position) < BOTTOM_TOLERANCE:
 				_start_drop()
 
 		Phase.DROP:
 			# Chute en se retournant : le dos passe de la normale du cadre à la verticale,
-			# la tête vers l'entrée
-			var facing := (entrance - bee.global_position).slide(Vector3.UP)
+			# la tête vers le tunnel
+			var facing := (hive.get_tunnel_inner_end() - bee.global_position).slide(Vector3.UP)
 			if facing.is_zero_approx():
-				facing = bee.hive.get_comb_normal()
+				facing = hive.get_comb_normal()
 			bee.hop_towards(_drop_target, DROP_SPEED, facing, Vector3.UP, delta)
 			if bee.is_near(_drop_target, EXACT_RADIUS):
 				bee.play_animation(&"_bee_idle")
 				# Désormais sur le plancher : le walker repart de l'orientation actuelle
 				bee.walker.reset(CombWalker.Surface.FLOOR)
-				_phase = Phase.TO_ENTRANCE
+				_phase = Phase.TO_TUNNEL
 
-		Phase.TO_ENTRANCE:
-			# Plancher plat, à la hauteur de l'entrée : le walker gère virages,
-			# accélération et évitement des autres abeilles
-			_random_turn(delta)
-			bee.walker.steer_towards(entrance, FLOOR_STEER_RATE, delta)
-			bee.walker.step(1.0, delta)
-			if bee.is_near(entrance, ENTRANCE_RADIUS):
-				_phase = Phase.TO_LANDING
+		Phase.TO_TUNNEL:
+			# Point d'approche dans l'axe du tunnel, un peu avant son entrée
+			var approach := hive.get_tunnel_inner_end() - hive.get_tunnel_axis() * APPROACH_DISTANCE
+			if _walk_to(approach, FLOOR_STEER_RATE, APPROACH_RADIUS, delta, FLOOR_TURN_RATE):
+				_phase = Phase.THROUGH_TUNNEL
 
-		Phase.TO_LANDING:
-			# Ligne droite jusqu'à la planche : courte, et la planche peut être
-			# à une autre hauteur que le plancher (le walker reste à hauteur constante)
-			var landing := bee.hive.get_landing_position()
-			bee.walk_towards(landing, delta, Vector3.UP, maxf(bee.walker.current_speed, 0.5))
-			if bee.is_near(landing, EXACT_RADIUS):
+		Phase.THROUGH_TUNNEL:
+			# Guidage serré : l'abeille s'aligne sur l'axe avant d'entrer et y reste.
+			# Le walker continue d'éviter et de freiner derrière les autres abeilles.
+			if _walk_to(hive.get_tunnel_outer_end(), TUNNEL_STEER_RATE, TUNNEL_EXIT_RADIUS,
+					delta, TUNNEL_TURN_RATE):
+				_takeoff = hive.get_random_landing_position()
+				_phase = Phase.TO_TAKEOFF
+
+		Phase.TO_TAKEOFF:
+			# Ligne droite jusqu'au point de décollage : courte, et la planche peut être
+			# à une autre hauteur que le tunnel (le walker reste à hauteur constante)
+			bee.walk_towards(_takeoff, delta, Vector3.UP, _wander_speed(delta))
+			if bee.is_near(_takeoff, EXACT_RADIUS):
 				# Décollage. Le passage à un état Dehors démarre le bourdonnement
 				# individuel (Bee.change_state).
 				return _next
@@ -140,11 +153,3 @@ func _start_drop() -> void:
 	bee.play_animation(&"_bee_hover")
 	var p := bee.global_position + bee.hive.get_comb_normal() * bee.hive.drop_clearance
 	_drop_target = Vector3(p.x, bee.hive.get_floor_height(), p.z)
-
-## Virages aléatoires : nouvelle vitesse de virage de temps en temps.
-func _random_turn(delta: float) -> void:
-	_turn_change_time -= delta
-	if _turn_change_time <= 0.0:
-		_turn_rate = randf_range(-MAX_TURN_RATE, MAX_TURN_RATE)
-		_turn_change_time = randf_range(TURN_CHANGE_MIN, TURN_CHANGE_MAX)
-	bee.walker.turn(_turn_rate * delta)

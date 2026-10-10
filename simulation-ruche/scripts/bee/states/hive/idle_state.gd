@@ -16,21 +16,8 @@ const WALK_MAX := 5.0
 const PAUSE_MIN := 0.5
 const PAUSE_MAX := 3.0
 
-## Facteur appliqué à walk_speed, retiré au hasard plusieurs fois par phase de marche.
-const SPEED_FACTOR_MIN := 0.5
-const SPEED_FACTOR_MAX := 1.5
-
-## Intervalle (s) entre deux changements de vitesse pendant une phase de marche.
-const SPEED_CHANGE_MIN := 0.3
-const SPEED_CHANGE_MAX := 1.0
-
 ## Vitesse de virage maximale (rad/s), dans un sens ou dans l'autre.
 const MAX_TURN_RATE := 3.0
-
-## Intervalle (s) entre deux changements de vitesse de virage : plus il est court,
-## plus la trajectoire zigzague.
-const TURN_CHANGE_MIN := 0.2
-const TURN_CHANGE_MAX := 0.8
 
 ## Urgence au-delà de laquelle une abeille en pause se remet à marcher pour s'écarter.
 ## 0.8 correspond à une voisine à moins de 20 % de AVOID_RADIUS : quasi superposée.
@@ -46,24 +33,11 @@ var _walking := false
 ## Temps restant (s) dans la phase en cours (marche ou pause).
 var _phase_time := 0.0
 
-## Facteur de vitesse visé actuellement (le walker le rejoint progressivement).
-var _speed_factor := 1.0
-
-## Temps restant (s) avant de tirer une nouvelle vitesse visée.
-var _speed_change_time := 0.0
-
-## Vitesse de virage actuelle (rad/s) : positive ou négative selon le sens.
-var _turn_rate := 0.0
-
-## Temps restant (s) avant de tirer une nouvelle vitesse de virage.
-var _turn_change_time := 0.0
-
 # =============================================================================
 # Méthodes de l'état
 # =============================================================================
 
 func enter() -> void:
-	bee.play_animation(&"_bee_idle")
 	# Commence par une pause de durée aléatoire : évite que toutes les abeilles
 	# démarrent en même temps au lancement de la simulation
 	_start_pause(randf_range(0.0, PAUSE_MAX))

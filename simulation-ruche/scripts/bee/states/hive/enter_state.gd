@@ -1,25 +1,29 @@
 class_name EnterState extends HiveState
-## Entrée dans la ruche : marche de la planche d'envol jusqu'à l'entrée, puis sur le plancher
-## jusqu'au pied du cadre, et petit saut sur le bas du cadre.
+## Entrée dans la ruche : marche du point d'atterrissage jusqu'au tunnel, le traverse,
+## rejoint le pied du cadre sur le plancher, puis saute sur le bas du cadre.
 ## Mènera à UNLOAD une fois cet état écrit ; IDLE en attendant.
 
 # =============================================================================
 # Constantes
 # =============================================================================
 
-## Vitesse de virage (rad/s) vers le pied du cadre sur le plancher.
-const FLOOR_STEER_RATE := 5.0
+## Traversée du tunnel : guidage serré, presque pas d'errance.
+const TUNNEL_STEER_RATE := 8.0
+const TUNNEL_TURN_RATE := 0.3
+const TUNNEL_EXIT_RADIUS := 0.005
+
+## Marche vers le pied du cadre : tendance (rad/s), virages aléatoires (rad/s)
+## et distance d'arrivée (m), supérieure au rayon de virage.
+const FLOOR_STEER_RATE := 3.0
+const FLOOR_TURN_RATE := 2.0
+const FOOT_RADIUS := 0.01
 
 ## Écart maximal (m) autour du point du cadre le plus proche de l'entrée, pour que
 ## les abeilles ne montent pas toutes au même endroit.
-const CLIMB_SPREAD := 0.03
+const CLIMB_SPREAD := 0.05
 
 ## Vitesse (m/s) du saut du plancher vers le cadre.
 const CLIMB_SPEED := 0.1
-
-## Distance (m) au pied du cadre en dessous de laquelle l'abeille saute.
-## Supérieure au rayon de virage, sinon elle tournerait autour du point.
-const FOOT_RADIUS := 0.008
 
 ## Distance (m) de fin des déplacements en ligne droite (move_toward atteint la cible exactement).
 const EXACT_RADIUS := 0.0005
@@ -30,9 +34,10 @@ const EXACT_RADIUS := 0.0005
 
 ## Étapes de l'entrée.
 enum Phase {
-	TO_ENTRANCE,   ## Marche de la planche jusqu'à l'entrée
-	TO_COMB_FOOT,  ## Marche sur le plancher jusqu'au pied du cadre
-	CLIMB,         ## Saut sur le bas du cadre en se retournant
+	TO_TUNNEL,       ## Marche sur la planche jusqu'à l'extrémité extérieure du tunnel
+	THROUGH_TUNNEL,  ## Traversée du tunnel jusqu'à son extrémité intérieure
+	TO_COMB_FOOT,    ## Marche sur le plancher jusqu'au pied du cadre
+	CLIMB,           ## Saut sur le bas du cadre en se retournant
 }
 
 # =============================================================================
@@ -40,7 +45,7 @@ enum Phase {
 # =============================================================================
 
 ## Étape en cours.
-var _phase := Phase.TO_ENTRANCE
+var _phase := Phase.TO_TUNNEL
 
 ## Point d'arrivée sur le cadre, et point du plancher juste en dessous (pied du cadre).
 var _climb_target := Vector3.ZERO
@@ -51,39 +56,45 @@ var _comb_foot := Vector3.ZERO
 # =============================================================================
 
 func enter() -> void:
-	bee.play_animation(&"_bee_idle")
-	_phase = Phase.TO_ENTRANCE
+	_phase = Phase.TO_TUNNEL
+	_reset_wander()
 
 	# Point d'arrivée sur le cadre : près du bas, côté entrée, un peu au hasard
-	var edge := bee.hive.clamp_to_comb(bee.hive.get_entrance_position())
-	_climb_target = bee.hive.get_comb_point_near(edge, CLIMB_SPREAD)
+	var hive := bee.hive
+	var edge := hive.get_comb_bottom_point(hive.get_entrance_position())
+	_climb_target = hive.get_comb_point_near(edge, CLIMB_SPREAD)
 	# Pied du cadre : sous ce point, écarté du cadre comme pour la chute en sortie
-	var p := _climb_target + bee.hive.get_comb_normal() * bee.hive.drop_clearance
-	_comb_foot = Vector3(p.x, bee.hive.get_floor_height(), p.z)
+	var p := _climb_target + hive.get_comb_normal() * hive.drop_clearance
+	_comb_foot = Vector3(p.x, hive.get_floor_height(), p.z)
 
 func update(delta: float) -> BeeState:
+	var hive := bee.hive
+
 	match _phase:
-		Phase.TO_ENTRANCE:
-			# Ligne droite de la planche à l'entrée : courte, avec un dénivelé éventuel
-			var entrance := bee.hive.get_entrance_position()
-			bee.walk_towards(entrance, delta, Vector3.UP, 1.0)
-			if bee.is_near(entrance, EXACT_RADIUS):
-				# À l'intérieur, sur le plancher : le walker prend le relais
+		Phase.TO_TUNNEL:
+			# Ligne droite du point d'atterrissage au tunnel : courte, avec un dénivelé éventuel
+			var outer := hive.get_tunnel_outer_end()
+			bee.walk_towards(outer, delta, Vector3.UP, _wander_speed(delta))
+			if bee.is_near(outer, EXACT_RADIUS):
+				# Dans le tunnel, au niveau du plancher : le walker prend le relais
 				bee.walker.reset(CombWalker.Surface.FLOOR)
-				bee.walker.current_speed = 1.0   # pas d'arrêt à l'entrée
+				bee.walker.current_speed = _speed_factor   # pas d'arrêt à l'entrée
+				_phase = Phase.THROUGH_TUNNEL
+
+		Phase.THROUGH_TUNNEL:
+			if _walk_to(hive.get_tunnel_inner_end(), TUNNEL_STEER_RATE, TUNNEL_EXIT_RADIUS,
+					delta, TUNNEL_TURN_RATE):
 				_phase = Phase.TO_COMB_FOOT
 
 		Phase.TO_COMB_FOOT:
-			bee.walker.steer_towards(_comb_foot, FLOOR_STEER_RATE, delta)
-			bee.walker.step(1.0, delta)
-			if bee.is_near(_comb_foot, FOOT_RADIUS):
+			if _walk_to(_comb_foot, FLOOR_STEER_RATE, FOOT_RADIUS, delta, FLOOR_TURN_RATE):
 				bee.play_animation(&"_bee_hover")
 				_phase = Phase.CLIMB
 
 		Phase.CLIMB:
 			# Saut sur le cadre en se retournant : le dos passe à la normale du cadre,
 			# la tête vers le haut du cadre
-			var normal := bee.hive.get_comb_normal()
+			var normal := hive.get_comb_normal()
 			var facing := (_climb_target - bee.global_position).slide(normal)
 			if facing.is_zero_approx():
 				facing = Vector3.UP

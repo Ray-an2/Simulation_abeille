@@ -2,6 +2,21 @@ class_name Bee extends Node3D
 ## Agent abeille ouvrière, piloté par une machine à états hiérarchique.
 
 # =============================================================================
+# Constantes
+# =============================================================================
+
+## Vitesse d'avance du corps dans _bee_walk à speed_scale = 1, en unités du squelette par seconde :
+## chaque pied recule de 220 unités pendant les 0,25 s d'appui.
+const WALK_ANIM_SPEED := 880.0
+
+## Échelle entre le squelette et le modèle (nœud RootNode du glTF).
+const SKELETON_SCALE := 0.01
+
+## En dessous de ce facteur de vitesse, l'abeille est considérée à l'arrêt :
+## évite d'alterner walk et idle pendant les phases d'accélération et de freinage.
+const WALK_MIN_FACTOR := 0.05
+
+# =============================================================================
 # Références injectées par Simulation
 # =============================================================================
 
@@ -28,6 +43,10 @@ var simulation: Simulation
 ## Locomotion sur le cadre (cap, vitesse, évitement), partagée par les états Ruche.
 ## Conservée d'un état à l'autre, réinitialisée à chaque arrivée dans la ruche.
 var walker: CombWalker
+
+## Vitesse d'avance (m/s) du corps dans _bee_walk à speed_scale = 1, en unités du monde.
+## Calculée une fois dans _ready() : l'échelle du modèle ne change pas pendant la simulation.
+var _walk_anim_world_speed := 0.0
 
 ## Quantité de nectar transportée. Remplie en FORAGE, vidée en UNLOAD.
 var nectar: float = 0.0
@@ -79,6 +98,10 @@ func _ready() -> void:
 	walker = CombWalker.new(self)
 	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
 	_buzz.pitch_scale = randf_range(0.9, 1.1)
+	# Conversion de la vitesse de l'animation : unités du squelette → modèle → monde.
+	# global_basis est valide ici : l'abeille est déjà dans l'arbre quand _ready() s'exécute.
+	var model_scale := ($Model as Node3D).global_basis.get_scale().x
+	_walk_anim_world_speed = WALK_ANIM_SPEED * SKELETON_SCALE * model_scale
 	change_state(idle)
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
@@ -139,8 +162,12 @@ func fly_towards(target: Vector3, delta: float) -> void:
 ## Réservé aux états du super-état Ruche.
 ## [param up] est la normale de la surface parcourue : passer
 ## [method Hive.get_comb_normal] pour que l'abeille reste à plat sur le cadre.
+## Règle aussi la cadence des pattes sur la vitesse appliquée.
 func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP, speed_factor: float = 1.0) -> void:
 	_move_towards(target, simulation.walk_speed * speed_factor * delta, up, delta)
+	# Les pattes suivent la vitesse appliquée : walker (cadre, plancher, tunnel)
+	# comme lignes droites de LEAVE et ENTER sur la planche
+	play_walk(speed_factor)
 	
 ## Renvoie [code]true[/code] si l'abeille est à moins de [param radius] de [param target].
 ## Sert de test d'arrivée pour GO, RETURN, etc.
@@ -161,9 +188,20 @@ func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, de
 # Animation (appelé par les états)
 # =============================================================================
 
+## Joue _bee_walk à la cadence qui correspond à la vitesse réelle, ou _bee_idle à l'arrêt.
+## [param speed_factor] multiplie walk_speed, comme dans walk_towards().
+func play_walk(speed_factor: float) -> void:
+	if speed_factor < WALK_MIN_FACTOR:
+		play_animation(&"_bee_idle")
+		return
+	play_animation(&"_bee_walk")
+	# Cadence des pattes = vitesse réelle / vitesse de l'animation à speed_scale = 1
+	_anim.speed_scale = simulation.walk_speed * speed_factor / _walk_anim_world_speed
+
 ## Joue [param anim_name] depuis un point aléatoire, pour que les abeilles
 ## ne battent pas des ailes en parfaite synchronisation.
 func play_animation(anim_name: StringName) -> void:
+	_anim.speed_scale = 1.0
 	if _anim.current_animation == anim_name:
 		return
 	_anim.play(anim_name)
