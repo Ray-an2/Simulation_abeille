@@ -4,6 +4,9 @@
 [ext_resource type="PackedScene" uid="uid://b0y6vo6aalspq" path="res://assets/hive/hive.glb" id="1_52cir"]
 [ext_resource type="AudioStream" uid="uid://cd6yl0c1oqcak" path="res://assets/audio/hive-ambient.ogg" id="3_5x64p"]
 
+[sub_resource type="BoxShape3D" id="BoxShape3D_2t865"]
+size = Vector3(1, 0.9580078, 0.55096436)
+
 [node name="Hive" type="Node3D" unique_id=500112710]
 script = ExtResource("1_1hcnt")
 
@@ -31,3 +34,9 @@ stream = ExtResource("3_5x64p")
 autoplay = true
 max_distance = 3.0
 bus = &"Bees"
+
+[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=1860506252]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StaticBody3D" unique_id=645767146]
+transform = Transform3D(0.11142348, 0, 0, 0, 0.42800856, 0, 0, 0, 0.9019165, 0, 0.20664492, -0.0013455898)
+shape = SubResource("BoxShape3D_2t865")

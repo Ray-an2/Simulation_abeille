@@ -14,6 +14,10 @@ const SEGMENT_TOLERANCE := 0.05    # distance à partir de laquelle un segment e
 const SEGMENT_MAX_TRIES := 5       # essais pour trouver un segment qui reste dans scout_radius
 const VERTICAL_VARIATION := 0.3    # peu de variation verticale : plus naturel
 
+## Distance (m) à laquelle s'arrête le segment de repli vers la ruche :
+## son centre est dans la forme de collision, l'abeille ne pourrait pas l'atteindre.
+const HIVE_KEEP_OUT := 1.0
+
 # ---------------------------------------------------------------------------
 # Variables
 # ---------------------------------------------------------------------------
@@ -101,17 +105,20 @@ func _pick_segment() -> void:
 	var origin := bee.global_position
 	var hive_pos := bee.hive.global_position
 	var max_dist := bee.simulation.scout_radius
- 
+
 	for i in SEGMENT_MAX_TRIES:
 		var end := origin + _random_direction() * _levy_length()
-		if end.distance_to(hive_pos) <= max_dist:
+		# Fin de segment relevée à l'altitude de croisière : jamais sous le sol
+		end.y = maxf(end.y, bee.get_ground_height(end) + bee.simulation.cruise_height)
+		# Segment refusé s'il sort de la zone ou traverse un obstacle
+		if end.distance_to(hive_pos) <= max_dist and bee.is_path_clear(origin, end):
 			_segment_end = end
 			return
- 
-	# Aucun segment valide : retour vers la ruche, sur une longueur de Lévy
+
+	# Aucun segment valide : retour vers la ruche, en s'arrêtant avant elle
 	var to_hive := (hive_pos - origin).normalized()
-	_segment_end = origin + to_hive * minf(_levy_length(), origin.distance_to(hive_pos))
- 
+	var length := minf(_levy_length(), maxf(origin.distance_to(hive_pos) - HIVE_KEEP_OUT, 0.0))
+	_segment_end = origin + to_hive * length
  
 ## Longueur d'un segment, tirée selon une loi de puissance P(l) ∝ l^-µ.
 func _levy_length() -> float:

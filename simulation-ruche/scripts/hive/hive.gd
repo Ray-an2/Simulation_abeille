@@ -190,7 +190,7 @@ func clamp_to_floor(point: Vector3) -> Vector3:
 ## Point de référence de la planche d'envol (centre du bord, côté tunnel).
 ## Pour un point de décollage ou d'atterrissage, préférer get_random_landing_position().
 func get_landing_position() -> Vector3:
-	return _landing.global_positional_position
+	return _landing.global_position
 
 ## Point tiré au hasard dans la zone de décollage / atterrissage de la planche,
 ## pour que les abeilles ne partent et n'arrivent pas toutes au même endroit.

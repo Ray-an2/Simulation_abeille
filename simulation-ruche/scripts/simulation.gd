@@ -62,7 +62,26 @@ class_name Simulation extends Node3D
 @export_group("Déplacement")
 
 ## Vitesse de vol à l'extérieur (unités/s). À ajuster à l'échelle du terrain.
-@export var fly_speed: float = 0.05
+@export var fly_speed: float = 7.0
+
+## Accélération (m/s²) au décollage et lors des reprises de vitesse.
+## Avec 3 m/s², une abeille atteint 7 m/s en un peu plus de 2 s.
+@export var fly_acceleration: float = 3.0
+
+## Décélération (m/s²) à l'approche de la cible. Fixe la distance de freinage,
+## v² / (2 × décélération) : environ 6 m depuis 7 m/s avec la valeur par défaut.
+@export var fly_deceleration: float = 4.0
+
+## Vitesse minimale (m/s) en fin d'approche : sans plancher, la vitesse tendrait
+## vers zéro près de la cible et l'arrivée traînerait.
+@export var landing_speed: float = 0.2
+
+## Distance (m) à la cible en dessous de laquelle l'abeille commence à ralentir.
+@export var approach_distance: float = 1.0
+
+## Fraction de fly_speed conservée au contact de la cible (0 à 1).
+## Évite que la vitesse tende vers zéro : l'abeille finit toujours par arriver.
+@export_range(0.0, 1.0) var approach_min_factor: float = 0.1
 
 ## Vitesse de marche sur le rayon (unités/s). À ajuster à l'échelle de la ruche.
 @export var walk_speed: float = 0.02
@@ -79,6 +98,32 @@ class_name Simulation extends Node3D
 
 ## Toutes les fleurs de la scène, collectées au lancement.
 var flowers: Array[Flower] = []
+
+@export_group("Obstacles")
+
+## Terrain3D de la scène, pour connaître la hauteur du sol sous les abeilles.
+## Si null, le sol est ignoré.
+@export var terrain: Terrain3D
+
+## Hauteur de vol (m) au-dessus du sol, loin de la cible.
+@export var cruise_height: float = 1.0
+
+## Distance horizontale (m) à la cible en dessous de laquelle l'abeille amorce sa descente.
+## La hauteur exigée passe linéairement de cruise_height à ground_clearance.
+@export var descent_distance: float = 2.0
+
+## Hauteur minimale (m) du centre de l'abeille au-dessus du sol, même posée.
+@export var ground_clearance: float = 0.02
+
+## Portée (m) du rayon de détection des obstacles devant l'abeille.
+@export var obstacle_look_ahead: float = 0.5
+
+## Distance (m) gardée entre l'abeille et un obstacle pendant le contournement.
+@export var obstacle_clearance: float = 0.1
+
+## Calques de collision considérés comme obstacles (ruche, arbres).
+## Le terrain n'y est pas : il est géré par sa hauteur, plus rapide qu'un rayon.
+@export_flags_3d_physics var obstacle_mask: int = 1 << 2   # calque 3
 
 @export_group("Fleur")
 

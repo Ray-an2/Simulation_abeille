@@ -49,9 +49,17 @@ var simulation: Simulation
 ## Conservée d'un état à l'autre, réinitialisée à chaque arrivée dans la ruche.
 var walker: CombWalker
 
+## Vitesse de vol actuelle (m/s). Repart de 0 à chaque décollage et rejoint
+## fly_speed avec fly_acceleration ; diminue à l'approche de la cible.
+var _flight_speed := 0.0
+
 ## Vitesse d'avance (m/s) du corps dans _bee_walk à speed_scale = 1, en unités du monde.
 ## Calculée une fois dans _ready() : l'échelle du modèle ne change pas pendant la simulation.
 var _walk_anim_world_speed := 0.0
+
+## Sens de contournement préféré (+1 ou -1), tiré à la création : face à un obstacle
+## pile dans l'axe, les abeilles se répartissent des deux côtés au lieu de partir toutes à gauche.
+var _avoid_side := 1.0
 
 ## Quantité de nectar transportée. Remplie en FORAGE, vidée en UNLOAD.
 var nectar: float = 0.0
@@ -113,6 +121,7 @@ func _ready() -> void:
 	# l'inspecteur, car l'AnimationPlayer fait partie du modèle importé.
 	_anim.playback_default_blend_time = 0.25
 	
+	_avoid_side = 1.0 if randf() < 0.5 else -1.0
 	change_state(idle)
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
@@ -143,6 +152,8 @@ func change_state(next: BeeState) -> void:
 
 ## Prévient la ruche, réinitialise la marche et allume/coupe le bourdonnement individuel.
 func _on_location_changed(inside: bool) -> void:
+	# Passage Ruche ↔ Dehors : toujours posée sur la planche d'envol
+	land()
 	if inside:
 		hive.bee_entered(self)
 		# Arrivée sur le cadre : l'abeille repart immobile, dans la direction où elle regarde
@@ -162,11 +173,98 @@ func _exit_tree() -> void:
 # Déplacement (appelé par les états)
 # =============================================================================
 
-## Vole en ligne droite vers [param target] à la vitesse [member Simulation.fly_speed].
+## Vole vers [param target] à la vitesse [member Simulation.fly_speed], en contournant
+## les obstacles et en restant au-dessus du sol.
 ## À appeler à chaque update() tant que la cible n'est pas atteinte.
-## Le haut de l'abeille reste aligné sur la verticale du monde.
+# --- bee.gd ---
+
 func fly_towards(target: Vector3, delta: float) -> void:
-	_move_towards(target, simulation.fly_speed * delta, Vector3.UP, delta)
+	var goal := _flight_goal(target)
+
+	# Vitesse maximale qui permet encore de s'arrêter sur la cible : v = √(2·a·d).
+	# Distance mesurée à la cible finale, pas au point de détour, pour ne pas
+	# freiner à chaque contournement d'obstacle.
+	var dist := global_position.distance_to(target)
+	var brake_limit := sqrt(2.0 * simulation.fly_deceleration * dist)
+	var wanted := clampf(brake_limit, simulation.landing_speed, simulation.fly_speed)
+
+	# La vitesse courante rejoint la vitesse voulue sans à-coup
+	var rate := simulation.fly_acceleration if wanted > _flight_speed else simulation.fly_deceleration
+	_flight_speed = move_toward(_flight_speed, wanted, rate * delta)
+
+	_move_towards(goal, _flight_speed * delta, Vector3.UP, delta)
+
+	# Filet de sécurité : jamais sous le sol
+	var floor_y := get_ground_height(global_position) + simulation.ground_clearance
+	if global_position.y < floor_y:
+		global_position.y = floor_y
+
+## Hauteur du terrain sous [param pos], ou -INF si inconnue
+## (pas de terrain assigné, trou dans le terrain, hors de la carte).
+func get_ground_height(pos: Vector3) -> float:
+	if simulation.terrain == null:
+		return -INF
+	# Terrain3D renvoie NAN dans les trous et hors des régions peintes
+	var h := simulation.terrain.data.get_height(pos)
+	return -INF if is_nan(h) else h
+
+## Renvoie true si aucun obstacle ne coupe le segment [param from] → [param to].
+## Sert à ScoutState pour écarter les segments qui traversent un arbre ou la ruche.
+func is_path_clear(from: Vector3, to: Vector3) -> bool:
+	var query := PhysicsRayQueryParameters3D.create(from, to, simulation.obstacle_mask)
+	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+## Point à viser à cette frame pour aller vers [param target] sans traverser
+## d'obstacle ni le sol.
+func _flight_goal(target: Vector3) -> Vector3:
+	var to_target := target - global_position
+	var dist := to_target.length()
+	if dist < 0.000001:
+		return target
+	var dir := to_target / dist
+	var look := simulation.obstacle_look_ahead
+
+	# --- Obstacles ---
+	# Le rayon s'arrête un peu avant la cible : la planche d'envol fait partie de la ruche,
+	# il ne faut pas que l'abeille la prenne pour un obstacle au moment d'atterrir
+	var reach := minf(look, dist - simulation.obstacle_clearance)
+	if reach > 0.0:
+		var query := PhysicsRayQueryParameters3D.create(
+			global_position, global_position + dir * reach, simulation.obstacle_mask)
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty():
+			var normal: Vector3 = hit.normal
+			# Glissement : on retire de la direction la composante qui fonce dans la surface
+			var along := dir.slide(normal)
+			# Obstacle pile en face : le glissement est quasi nul, on contourne par le côté
+			if along.length_squared() < 0.01:
+				along = normal.cross(Vector3.UP) * _avoid_side
+				# Surface horizontale (dessus de la ruche vu d'en dessous) : autre axe de secours
+				if along.length_squared() < 0.01:
+					along = normal.cross(Vector3.RIGHT)
+			# Détour : décollé de la surface, un peu plus loin dans le sens du glissement
+			var detour: Vector3 = hit.position + normal * simulation.obstacle_clearance \
+					+ along.normalized() * look
+			return _above_ground(detour, target)
+
+	# --- Pas d'obstacle : point à courte distance sur la ligne droite, relevé si besoin ---
+	# On ne relève pas directement la cible : loin d'elle, c'est le point proche
+	# qui compte pour éviter le relief
+	var goal := target if dist <= look else global_position + dir * look
+	return _above_ground(goal, target)
+
+## Relève [param point] à la hauteur minimale de vol au-dessus du sol. Cette hauteur
+## diminue à l'approche de [param target], pour que l'abeille puisse descendre se poser.
+func _above_ground(point: Vector3, target: Vector3) -> Vector3:
+	var ground := get_ground_height(point)
+	if ground == -INF:
+		return point
+	# Distance horizontale restante jusqu'à la cible : 0 dessus, 1 au-delà de descent_distance
+	var horizontal := Vector2(target.x - point.x, target.z - point.z).length()
+	var t := clampf(horizontal / simulation.descent_distance, 0.0, 1.0)
+	var min_y := ground + lerpf(simulation.ground_clearance, simulation.cruise_height, t)
+	point.y = maxf(point.y, min_y)
+	return point
 
 ## Marche vers [param target] à la vitesse [member Simulation.walk_speed],
 ## multipliée par [param speed_factor].
@@ -194,6 +292,11 @@ func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, de
 	_face(facing, up, delta)
 	# move_toward ne dépasse jamais la cible : arrivée exacte
 	global_position = global_position.move_toward(target, speed * delta)
+
+## Remet la vitesse de vol à zéro. À appeler dès que l'abeille est posée
+## (fleur, planche d'envol) : le prochain vol repartira d'un décollage.
+func land() -> void:
+	_flight_speed = 0.0
 	
 # =============================================================================
 # Animation (appelé par les états)

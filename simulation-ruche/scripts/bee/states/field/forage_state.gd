@@ -10,6 +10,7 @@ var _foraging : bool
 var _harvest_done : bool
 
 func enter() -> void:
+	bee.land()   # posée : le départ vers la ruche repartira d'un décollage
 	bee.play_animation(&"_bee_idle")
 	_flower = bee.known_flower
 	_foraging = false
