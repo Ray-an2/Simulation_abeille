@@ -22,6 +22,27 @@ const SKELETON_SCALE := 0.0008
 const WALK_MIN_FACTOR := 0.05
 
 # =============================================================================
+# Pelotes de pollen (indicateur visuel de charge)
+# =============================================================================
+
+## Durée (s) de l'animation de croissance des pelotes après chaque visite.
+const POLLEN_GROW_TIME := 0.8
+
+## Taille des pelotes pour une charge minimale (fraction de leur taille maximale).
+const POLLEN_MIN_SCALE := 0.3
+
+## Pelotes de pollen, enfants des BoneAttachment3D des pattes arrière.
+## On agit sur elles et non sur les attachements, dont la transformation
+## est imposée par l'os à chaque frame.
+@onready var _pollen: Array[MeshInstance3D] = [
+	$BonePollenLeft/PollenBall,
+	$BonePollenRight/PollenBall,
+]
+
+## Tween en cours sur les pelotes, pour l'interrompre si la charge change de nouveau.
+var _pollen_tween: Tween
+
+# =============================================================================
 # Références injectées par Simulation
 # =============================================================================
 
@@ -144,6 +165,10 @@ func _ready() -> void:
 	_anim.playback_default_blend_time = 0.25
 	
 	_avoid_side = 1.0 if randf() < 0.5 else -1.0
+	
+	# Abeille vide au départ : pelotes masquées
+	update_pollen()
+	
 	change_state(idle)
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
@@ -375,6 +400,37 @@ func play_animation(anim_name: StringName) -> void:
 	_anim.play(anim_name)
 	if _anim.get_animation(anim_name).loop_mode != Animation.LOOP_NONE:
 		_anim.seek(randf() * _anim.current_animation_length, true)
+
+## Applique le matériau de [param flower] aux deux pelotes.
+## material_override ne modifie pas la ressource : chaque abeille pointe
+## simplement vers l'un des trois matériaux partagés.
+func set_pollen_from(flower: Flower) -> void:
+	for p in _pollen:
+		p.material_override = flower.pollen_material
+
+## Met à jour les pelotes selon le remplissage de l'abeille (entre 0 et 1).
+## À appeler après chaque récolte (FORAGE) et après le déchargement (UNLOAD).
+func update_pollen() -> void:
+	var ratio := clampf(nectar / simulation.forage_capacity, 0.0, 1.0)
+
+	# Un tween précédent encore actif écraserait la nouvelle taille
+	if _pollen_tween != null and _pollen_tween.is_valid():
+		_pollen_tween.kill()
+
+	# Abeille vide : pelotes masquées, sans animation
+	if ratio <= 0.0:
+		for p in _pollen:
+			p.visible = false
+		return
+
+	var target := Vector3.ONE * lerpf(POLLEN_MIN_SCALE, 1.0, ratio)
+	_pollen_tween = create_tween().set_parallel()
+	for p in _pollen:
+		# Première apparition : la pelote part de la moitié de la taille minimale
+		if not p.visible:
+			p.scale = Vector3.ONE * POLLEN_MIN_SCALE * 0.5
+			p.visible = true
+		_pollen_tween.tween_property(p, "scale", target, POLLEN_GROW_TIME)
 	
 # =============================================================================
 # Utilitaires internes

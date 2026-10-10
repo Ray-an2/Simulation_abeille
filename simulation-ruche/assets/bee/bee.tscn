@@ -11,11 +11,24 @@ script = ExtResource("1_j85ti")
 [node name="Model" parent="." unique_id=2045436885 instance=ExtResource("1_h63oj")]
 
 [node name="BonePollenLeft" type="BoneAttachment3D" parent="." unique_id=471883853]
-visible = false
+transform = Transform3D(0.00019216131, 0.00016202475, 0.000759488, -0.00053409406, 0.00059554883, 8.082394e-06, -0.0005637533, -0.00050898874, 0.00025122226, 0.004196876, 0.0016787776, -0.0021577643)
+bone_name = "l_hindleg_jnt04.72_72"
+bone_idx = 71
 use_external_skeleton = true
 external_skeleton = NodePath("../Model/Sketchfab_model/root/GLTF_SceneRootNode/RootNode_0_0/skeletal_1_1/GLTF_created_0/Skeleton3D")
 
 [node name="PollenBall" parent="BonePollenLeft" unique_id=1373978399 instance=ExtResource("3_evbkq")]
+transform = Transform3D(1000.0002, 0, 0, 3.0517578e-05, 1000.00024, 3.0517578e-05, -1.5258789e-05, 0, 1000, 1.0303984, 0.9303031, -0.45917106)
+
+[node name="BonePollenRight" type="BoneAttachment3D" parent="." unique_id=1218380416]
+transform = Transform3D(-0.00016888819, -0.00013069797, 0.00077096996, -0.0004896116, 0.0006326772, 2.975338e-11, -0.000609719, -0.000471845, -0.00021355375, -0.0040939283, 0.0015970401, -0.0025824164)
+bone_name = "r_hindleg_jnt04.82_82"
+bone_idx = 81
+use_external_skeleton = true
+external_skeleton = NodePath("../Model/Sketchfab_model/root/GLTF_SceneRootNode/RootNode_0_0/skeletal_1_1/GLTF_created_0/Skeleton3D")
+
+[node name="PollenBall" parent="BonePollenRight" unique_id=1874397920 instance=ExtResource("3_evbkq")]
+transform = Transform3D(1000.0002, 0, 0, 3.0517578e-05, 1000.00024, 3.0517578e-05, -1.5258789e-05, 0, 1000, 1.0303984, 0.9303031, -0.45917106)
 
 [node name="CameraAnchor" type="Marker3D" parent="." unique_id=1955092898]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.003258166, 0.006792824)

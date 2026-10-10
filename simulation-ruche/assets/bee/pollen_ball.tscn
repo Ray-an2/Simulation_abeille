@@ -12,8 +12,6 @@ height = 0.003
 radial_segments = 6
 rings = 6
 
-[node name="PollenBall" type="Node3D" unique_id=1373978399]
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=480116623]
+[node name="PollenBall" type="MeshInstance3D" unique_id=480116623]
 material_override = SubResource("StandardMaterial3D_o8lmq")
 mesh = SubResource("SphereMesh_2t865")

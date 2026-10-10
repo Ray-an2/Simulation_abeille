@@ -27,10 +27,11 @@ func update(_delta: float) -> BeeState:
 	# Butinage terminé
 	if _harvest_done:
 		_harvest_done = false
+		# Couleur de la fleur visitée, puis croissance de la pelote
+		bee.set_pollen_from(_flower)
 		var capacity := bee.simulation.forage_capacity
 		bee.nectar += minf(bee.simulation.harvest_amount, capacity - bee.nectar)
-		# Abeille pleine -> Etat RETURN
-		if bee.nectar >= capacity: return bee.return_home
+		bee.update_pollen()
  
 	# Fleur vide -> Etat RETURN
 	if _flower.is_empty(): return bee.return_home
