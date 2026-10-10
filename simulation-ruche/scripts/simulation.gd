@@ -91,6 +91,19 @@ var flowers: Array[Flower] = []
 ## Quantite de nectar récolter de l'abeille
 @export var harvest_amount := 5.0
 
+@export_group("Qualité de source")
+
+## Distance à plat (unités) à partir de laquelle la source est jugée trop loin (score 0)
+@export var max_source_distance := 10.0
+
+## Durée de trajet (s) à partir de laquelle le score de temps tombe à 0
+@export var max_trip_time := 120.0
+
+## Poids de chaque critère dans la rentabilité
+@export_range(0.0, 1.0) var weight_stock := 0.4
+@export_range(0.0, 1.0) var weight_distance := 0.3
+@export_range(0.0, 1.0) var weight_time := 0.3
+
 ## Retourne l'heure
 func hours_from(delta: float) -> float:
 	return delta * 24.0 / day_duration_seconds
@@ -99,7 +112,7 @@ func hours_from(delta: float) -> float:
 func is_daytime() -> bool:
 	return sky.is_day()
 
-# total heures écoulées
+## total heures écoulées
 var sim_hours := 0.0
 
 ## Crée [member bee_count] abeilles et leur injecte la ruche et la simulation.
@@ -129,3 +142,17 @@ func _process(delta: float) -> void:
 	var dh := hours_from(delta)
 	sim_hours += dh
 	sky.current_time += dh # Recalcule le soleil à chaque changement
+
+## Distance horizontale entre 2 positions
+func get_flat_distance(from: Vector3, to: Vector3) -> float:
+	return Vector2(to.x - from.x, to.z - from.z).length()
+
+## Angle entre la direction du soleil et celle de la source
+func get_dance_angle(source_pos: Vector3, hive_pos: Vector3) -> float:
+	var to_source := source_pos - hive_pos
+	var to_sun: Vector3 = sky.sun.global_transform.basis.z   # direction vers le soleil
+	to_source.y = 0.0
+	to_sun.y = 0.0
+	if to_source.length() < 0.001 or to_sun.length() < 0.001:
+		return 0.0
+	return to_sun.signed_angle_to(to_source, Vector3.UP)

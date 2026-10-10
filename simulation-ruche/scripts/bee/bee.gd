@@ -64,6 +64,12 @@ var known_flower: Flower = null
 ## Détermine la transition suivante (DANCE, GO ou IDLE) et la durée de la danse.
 var known_profitability: float = 0.0
 
+## Durée du trajet en cours hors de la ruche
+var trip_time: float = 0.0
+
+## Distance à plat ruche -> source
+var distance: float = 0.0
+
 # =============================================================================
 # États
 # =============================================================================
@@ -86,6 +92,15 @@ var current_state: BeeState
 ## État de retour à la ruche
 var return_home: ReturnState
 
+## Décharge le nectar dans la ruche
+var unload: UnloadState
+
+## Vol en direction d'une source connue
+var go: GoState
+
+## Butine une source
+var forage: ForageState
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
@@ -101,6 +116,9 @@ func _ready() -> void:
 	scout = ScoutState.new(self)
 	return_home = ReturnState.new(self)
 	walker = CombWalker.new(self)
+	unload = UnloadState.new(self)
+	go = GoState.new(self)
+	forage = ForageState.new(self)
 	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
 	_buzz.pitch_scale = randf_range(0.9, 1.1)
 	# Conversion de la vitesse de l'animation : unités du squelette → modèle → monde.
