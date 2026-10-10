@@ -239,37 +239,43 @@ func _flight_goal(target: Vector3) -> Vector3:
 	var dist := to_target.length()
 	if dist < 0.000001:
 		return target
-	var dir := to_target / dist
 	var look := simulation.obstacle_look_ahead
 
-	# --- Obstacles ---
-	# Le rayon s'arrête un peu avant la cible : la planche d'envol fait partie de la ruche,
-	# il ne faut pas que l'abeille la prenne pour un obstacle au moment d'atterrir
-	var reach := minf(look, dist - simulation.obstacle_clearance)
-	if reach > 0.0:
-		var query := PhysicsRayQueryParameters3D.create(
-			global_position, global_position + dir * reach, simulation.obstacle_mask)
-		var hit := get_world_3d().direct_space_state.intersect_ray(query)
-		if not hit.is_empty():
-			var normal: Vector3 = hit.normal
-			# Glissement : on retire de la direction la composante qui fonce dans la surface
-			var along := dir.slide(normal)
-			# Obstacle pile en face : le glissement est quasi nul, on contourne par le côté
-			if along.length_squared() < 0.01:
-				along = normal.cross(Vector3.UP) * _avoid_side
-				# Surface horizontale (dessus de la ruche vu d'en dessous) : autre axe de secours
-				if along.length_squared() < 0.01:
-					along = normal.cross(Vector3.RIGHT)
-			# Détour : décollé de la surface, un peu plus loin dans le sens du glissement
-			var detour: Vector3 = hit.position + normal * simulation.obstacle_clearance \
-					+ along.normalized() * look
-			return _above_ground(detour, target)
+	# Point visé si rien ne gêne : à courte distance sur la ligne droite,
+	# relevé au-dessus du sol (hauteur de croisière loin de la cible)
+	var goal := target if dist <= look else global_position + to_target / dist * look
+	goal = _above_ground(goal, target)
 
-	# --- Pas d'obstacle : point à courte distance sur la ligne droite, relevé si besoin ---
-	# On ne relève pas directement la cible : loin d'elle, c'est le point proche
-	# qui compte pour éviter le relief
-	var goal := target if dist <= look else global_position + dir * look
-	return _above_ground(goal, target)
+	# Rayon vers CE point, et non vers la cible : c'est là que l'abeille va réellement.
+	# Il s'arrête un peu avant la cible : la planche d'envol fait partie de la ruche,
+	# il ne faut pas qu'elle soit vue comme un obstacle au moment d'atterrir.
+	var to_goal := goal - global_position
+	var reach := minf(to_goal.length(), dist - simulation.obstacle_clearance)
+	if reach <= 0.0:
+		return goal
+	var dir := to_goal.normalized()
+	var query := PhysicsRayQueryParameters3D.create(
+		global_position, global_position + dir * reach, simulation.obstacle_mask)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return goal
+
+	# Obstacle : on glisse le long de la surface touchée
+	var normal: Vector3 = hit.normal
+	var along := dir.slide(normal)
+	# Obstacle pile en face : le glissement est quasi nul, on contourne par le côté
+	if along.length_squared() < 0.01:
+		along = normal.cross(Vector3.UP) * _avoid_side
+		# Surface horizontale (dessous du toit, par exemple) : autre axe de secours
+		if along.length_squared() < 0.01:
+			along = normal.cross(Vector3.RIGHT)
+	var detour: Vector3 = hit.position + normal * simulation.obstacle_clearance \
+			+ along.normalized() * look
+
+	# Pas de relèvement à la hauteur de croisière : il ferait repasser le détour
+	# à travers l'obstacle. On garantit seulement de ne pas passer sous le sol.
+	detour.y = maxf(detour.y, get_ground_height(detour) + simulation.ground_clearance)
+	return detour
 
 ## Relève [param point] à la hauteur minimale de vol au-dessus du sol. Cette hauteur
 ## diminue à l'approche de [param target], pour que l'abeille puisse descendre se poser.

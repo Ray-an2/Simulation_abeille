@@ -5,7 +5,10 @@
 [ext_resource type="AudioStream" uid="uid://cd6yl0c1oqcak" path="res://assets/audio/hive-ambient.ogg" id="3_5x64p"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_2t865"]
-size = Vector3(1, 0.9580078, 0.55096436)
+size = Vector3(0.11, 0.355, 0.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rduc1"]
+size = Vector3(0.110061646, 0.023132324, 0.53466797)
 
 [node name="Hive" type="Node3D" unique_id=500112710]
 script = ExtResource("1_1hcnt")
@@ -36,7 +39,13 @@ max_distance = 3.0
 bus = &"Bees"
 
 [node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=1860506252]
+collision_layer = 4
+collision_mask = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="StaticBody3D" unique_id=645767146]
-transform = Transform3D(0.11142348, 0, 0, 0, 0.42800856, 0, 0, 0, 0.9019165, 0, 0.20664492, -0.0013455898)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.23230204, 0.000120565295)
 shape = SubResource("BoxShape3D_2t865")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="StaticBody3D" unique_id=1555339224]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0001296997, 0.042510986, -0.017333984)
+shape = SubResource("BoxShape3D_rduc1")
