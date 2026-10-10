@@ -27,16 +27,16 @@ class_name Simulation extends Node3D
 @export_group("Population")
 
 ## Nombre d'abeilles créées au lancement.
-@export_range(20, 200) var bee_count: int = 20
+@export_range(20, 200) var bee_count: int = 100
 
 @export_group("Comportement")
 
 ## Probabilité par seconde qu'une abeille en IDLE parte explorer.
 ## À multiplier par delta dans IdleState, pour ne pas dépendre de la fréquence d'images.
-@export var p_scout: float = 0.01
+@export var p_scout: float = 0.005
 
 ## Rayon (unités) de la zone explorée autour de la ruche en SCOUT.
-@export var scout_radius: float = 10.0
+@export var scout_radius: float = 40.0
 
 ## Durée de danse (s) pour une source de rentabilité 1.
 ## La durée réelle est proportionnelle à la rentabilité (boucle de recrutement).
@@ -47,7 +47,7 @@ class_name Simulation extends Node3D
 @export var watch_min_duration: float = 2.0
 
 ## Durée maximale (s) d'exploration en SCOUT avant de rentrer bredouille.
-@export var scout_timeout: float = 20.0
+@export var scout_timeout: float = 90.0
 
 ## Rentabilité au-dessus de laquelle l'abeille danse après déchargement.
 @export_range(0.0, 1.0) var profitability_high: float = 0.6
@@ -82,6 +82,14 @@ class_name Simulation extends Node3D
 ## Vitesse de rotation des abeilles (1/s). Plus la valeur est grande, plus elles
 ## s'orientent vite vers leur cible. Une valeur très grande revient à un look_at instantané.
 @export var turn_speed: float = 6.0
+
+## Vitesse de vol en exploration (m/s) : plus lente que le transit,
+## la recherche de fleurs est visuelle.
+@export var scout_speed: float = 4.0
+
+## Vitesse angulaire maximale en vol (rad/s). Le rayon de virage vaut
+## vitesse / max_flight_turn_rate : 0,75 m à 3 m/s, 1,75 m à 7 m/s.
+@export var max_flight_turn_rate: float = 4.0
 
 ## Fraction de la vitesse conservée quand la cible est pile derrière l'abeille.
 ## Elle ralentit le temps de virer au lieu de décrire un grand arc.
@@ -140,7 +148,7 @@ var flowers: Array[Flower] = []
 @export_group("Qualité de source")
 
 ## Distance à plat (unités) à partir de laquelle la source est jugée trop loin (score 0)
-@export var max_source_distance := 10.0
+@export var max_source_distance := 25.0
 
 ## Durée de trajet (s) à partir de laquelle le score de temps tombe à 0
 @export var max_trip_time := 120.0

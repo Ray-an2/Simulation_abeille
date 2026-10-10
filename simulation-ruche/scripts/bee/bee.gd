@@ -21,6 +21,21 @@ const SKELETON_SCALE := 0.0008
 ## évite d'alterner walk et idle pendant les phases d'accélération et de freinage.
 const WALK_MIN_FACTOR := 0.05
 
+## Inclinaison (rad) par rad/s de vitesse de lacet. Avec 0,15, un virage à
+## 4 rad/s (max_flight_turn_rate) donne environ 34° d'inclinaison.
+const BANK_GAIN := 0.15
+
+## Inclinaison maximale (rad), environ 35°.
+const MAX_BANK := 0.6
+
+## Vitesse de lissage de l'inclinaison (1/s) : l'abeille s'incline et se redresse
+## progressivement, même si le lacet démarre d'un coup.
+const BANK_SMOOTHING := 8.0
+
+## Part de l'inclinaison du corps transmise à la caméra embarquée (0 = vue stable,
+## 1 = vue solidaire du corps). La tête compense une partie du roulis.
+const CAMERA_BANK_FACTOR := 0.5
+
 # =============================================================================
 # Pelotes de pollen (indicateur visuel de charge)
 # =============================================================================
@@ -56,6 +71,12 @@ var simulation: Simulation
 # Nœuds de la scène
 # =============================================================================
 
+## Modèle 3D : seul lui est incliné, pour ne pas perturber _face() ni la caméra.
+@onready var _model: Node3D = $Model
+
+## Marqueur de la caméra embarquée, enfant de Bee.
+@onready var _camera_anchor: Marker3D = $CameraAnchor
+
 ## Lecteur d'animations du modèle glTF (hover, idle, take_off_and_land).
 @onready var _anim: AnimationPlayer = $Model/AnimationPlayer
 
@@ -77,6 +98,10 @@ var _flight_speed := 0.0
 ## Vitesse d'avance (m/s) du corps dans _bee_walk à speed_scale = 1, en unités du monde.
 ## Calculée une fois dans _ready() : l'échelle du modèle ne change pas pendant la simulation.
 var _walk_anim_world_speed := 0.0
+
+## Inclinaison actuelle (rad) et avant horizontal à l'image précédente (mesure du lacet).
+var _bank := 0.0
+var _prev_forward := Vector3.ZERO
 
 ## Sens de contournement préféré (+1 ou -1), tiré à la création : face à un obstacle
 ## pile dans l'axe, les abeilles se répartissent des deux côtés au lieu de partir toutes à gauche.
@@ -102,6 +127,12 @@ var distance: float = 0.0
 ## Angle (rad) entre la direction du soleil et celle de la source, vu de la ruche.
 ## Calculé en UNLOAD, encodé par DANCE dans l'orientation de la phase frétillante.
 var angle: float = 0.0
+
+## Orientation d'origine du modèle dans bee.tscn, à laquelle on ajoute l'inclinaison.
+var _model_base_basis: Basis
+
+## Orientation d'origine du marqueur dans bee.tscn.
+var _camera_anchor_base_basis: Basis
 
 # =============================================================================
 # États
@@ -143,6 +174,7 @@ func _ready() -> void:
 	assert(hive != null and simulation != null,
 		"Bee '%s' : hive=%s, simulation=%s — doivent être assignés avant add_child()"
 		% [name, hive, simulation])
+	
 	idle = IdleState.new(self)
 	leave_hive = LeaveState.new(self)
 	enter_hive = EnterState.new(self)
@@ -152,6 +184,9 @@ func _ready() -> void:
 	unload = UnloadState.new(self)
 	go = GoState.new(self)
 	forage = ForageState.new(self)
+	
+	_model_base_basis = _model.transform.basis
+	_camera_anchor_base_basis = _camera_anchor.transform.basis
 	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
 	_buzz.pitch_scale = randf_range(0.9, 1.1)
 	# Conversion de la vitesse de l'animation : unités du squelette → modèle → monde.
@@ -224,32 +259,50 @@ func _exit_tree() -> void:
 # Déplacement (appelé par les états)
 # =============================================================================
 
-## Vole vers [param target] : le corps tourne progressivement vers le point visé
-## et l'abeille avance dans l'axe de son corps. Contourne les obstacles, reste au-dessus du sol.
-## À appeler à chaque update() tant que la cible n'est pas atteinte.
-func fly_towards(target: Vector3, delta: float) -> void:
+## [param arrive] : true pour s'arrêter sur la cible (fleur, planche d'envol),
+## false pour un point de passage (errance en SCOUT) : pas de freinage,
+## l'abeille garde sa vitesse et enchaîne sur le point suivant.
+## [param max_speed] : vitesse de croisière visée ; 0 = fly_speed.
+func fly_towards(target: Vector3, delta: float, arrive := true, max_speed := 0.0) -> void:
 	var goal := _flight_goal(target)
 	var to_goal := goal - global_position
 	var dist := global_position.distance_to(target)
+	var cruise := max_speed if max_speed > 0.0 else simulation.fly_speed
 
 	# --- Vitesse voulue ---
-	# Plafond de freinage : vitesse maximale qui permet encore de s'arrêter sur la cible
-	var brake_limit := sqrt(2.0 * simulation.fly_deceleration * dist)
-	var wanted := clampf(brake_limit, simulation.landing_speed, simulation.fly_speed)
-	# Cible derrière ou sur le côté : on ralentit pour virer serré.
-	# Alignement ramené de [-1, 1] à [0, 1] : 1 droit devant, 0 pile derrière.
+	var wanted := cruise
+	if arrive:
+		# Plafond de freinage : vitesse maximale qui permet encore de s'arrêter sur la cible
+		var brake_limit := sqrt(2.0 * simulation.fly_deceleration * dist)
+		wanted = clampf(brake_limit, simulation.landing_speed, cruise)
+
+	# Plafond de virage : vitesse maximale qui permet encore d'atteindre la cible.
+	# Rayon de virage r = v / ω_max ; pour un point à distance d vu sous l'angle θ,
+	# il faut r ≤ d / (2 sin θ), soit v ≤ ω_max · d / (2 sin θ).
+	# Sans ce plafond, une cible à l'intérieur du cercle de virage est inaccessible
+	# et l'abeille tourne autour indéfiniment.
+	var turn_limit := INF
 	var forward := global_basis.z.normalized()   # avant du modèle sur +Z (glTF)
 	if not to_goal.is_zero_approx():
-		var alignment := (forward.dot(to_goal.normalized()) + 1.0) * 0.5
-		wanted *= lerpf(simulation.turning_speed_factor, 1.0, alignment)
+		var cos_bearing := forward.dot(to_goal.normalized())
+		# Cible derrière ou sur le côté : on ralentit pour virer serré.
+		# Alignement ramené de [-1, 1] à [0, 1] : 1 droit devant, 0 pile derrière.
+		wanted *= lerpf(simulation.turning_speed_factor, 1.0, (cos_bearing + 1.0) * 0.5)
+		var sin_bearing := sqrt(maxf(1.0 - cos_bearing * cos_bearing, 0.0))
+		if sin_bearing > 0.01:
+			turn_limit = simulation.max_flight_turn_rate * to_goal.length() / (2.0 * sin_bearing)
+	wanted = minf(wanted, turn_limit)
 
-	# La vitesse courante rejoint la vitesse voulue sans à-coup
+	# La vitesse courante rejoint la vitesse voulue sans à-coup...
 	var rate := simulation.fly_acceleration if wanted > _flight_speed else simulation.fly_deceleration
 	_flight_speed = move_toward(_flight_speed, wanted, rate * delta)
+	# ...sauf pour virer : freinage immédiat. Avec la seule décélération (4 m/s²),
+	# l'abeille mettrait un demi-seconde à ralentir et dépasserait quand même la cible.
+	_flight_speed = minf(_flight_speed, turn_limit)
 
-	# --- Orientation : le corps tourne vers le point visé, à turn_speed ---
+	# --- Orientation : rotation plafonnée en vol ---
 	if to_goal.length_squared() >= 0.000001:
-		_face(to_goal, Vector3.UP, delta)
+		_face(to_goal, Vector3.UP, delta, simulation.max_flight_turn_rate)
 
 	# --- Déplacement ---
 	var step := _flight_speed * delta
@@ -271,6 +324,8 @@ func fly_towards(target: Vector3, delta: float) -> void:
 	var floor_y := get_ground_height(global_position) + simulation.ground_clearance
 	if global_position.y < floor_y:
 		global_position.y = floor_y
+	
+	_update_bank(delta)
 
 ## Hauteur du terrain sous [param pos], ou -INF si inconnue
 ## (pas de terrain assigné, trou dans le terrain, hors de la carte).
@@ -376,6 +431,10 @@ func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, de
 ## (fleur, planche d'envol) : le prochain vol repartira d'un décollage.
 func land() -> void:
 	_flight_speed = 0.0
+	_bank = 0.0
+	_prev_forward = Vector3.ZERO   # pas de lacet mesuré au prochain décollage
+	_model.transform.basis = _model_base_basis
+	_camera_anchor.transform.basis = _camera_anchor_base_basis
 	
 # =============================================================================
 # Animation (appelé par les états)
@@ -449,9 +508,8 @@ func _move_towards(target: Vector3, step: float, up: Vector3, delta: float) -> v
 	# et la cible est atteinte exactement
 	global_position = global_position.move_toward(target, step)
 	
-## Tourne progressivement l'abeille vers [param direction], avec [param up] comme vecteur
-## haut (avant du modèle sur +Z, convention glTF).
-func _face(direction: Vector3, up: Vector3, delta: float) -> void:
+## [param max_rate] : vitesse angulaire maximale (rad/s). INF = lissage seul (marche).
+func _face(direction: Vector3, up: Vector3, delta: float, max_rate := INF) -> void:
 	var dir := direction.normalized()
 	# Basis.looking_at échoue si la direction est parallèle au vecteur haut
 	# (vol vertical, ou cible hors du plan du cadre) : on prend alors un vecteur de secours
@@ -465,8 +523,43 @@ func _face(direction: Vector3, up: Vector3, delta: float) -> void:
 	# Interpolation indépendante du framerate : 1 - exp(-k·delta) donne la même
 	# vitesse de rotation à 30 ou à 144 images par seconde
 	var weight := 1.0 - exp(-simulation.turn_speed * delta)
+	# Le lissage exponentiel seul tourne d'autant plus vite que l'écart est grand :
+	# on plafonne la vitesse angulaire pour éviter les coups secs.
+	# angle_to renvoie l'angle de rotation entre les deux orientations (0 à π).
+	var angle := current_rot.angle_to(target_rot)
+	if angle > 0.0001:
+		weight = minf(weight, max_rate * delta / angle)
 
 	# On travaille en quaternions (rotation seule), puis on réapplique l'échelle
 	# du nœud pour ne pas la perdre si l'abeille est mise à l'échelle dans bee.tscn
 	var s := global_basis.get_scale()
 	global_basis = Basis(current_rot.slerp(target_rot, weight)) * Basis.from_scale(s)
+
+## Incline le modèle dans les virages, proportionnellement à la vitesse de lacet.
+## Purement visuel : la trajectoire n'est pas modifiée.
+func _update_bank(delta: float) -> void:
+	# Avant de l'abeille ramené à l'horizontale (avant du modèle sur +Z)
+	var forward := global_basis.z
+	forward.y = 0.0
+	if forward.is_zero_approx() or delta <= 0.0:
+		return
+	forward = forward.normalized()
+
+	# Vitesse de lacet (rad/s) : angle tourné autour de la verticale depuis l'image précédente.
+	# Positive pour un virage à gauche (sens trigonométrique vu de dessus).
+	var yaw_rate := 0.0
+	if _prev_forward != Vector3.ZERO:
+		yaw_rate = _prev_forward.signed_angle_to(forward, Vector3.UP) / delta
+	_prev_forward = forward
+
+	# Virage à gauche → aile gauche vers le bas. Si l'abeille penche
+	# du mauvais côté, inverser le signe.
+	var target := clampf(-yaw_rate * BANK_GAIN, -MAX_BANK, MAX_BANK)
+	_bank = lerpf(_bank, target, 1.0 - exp(-BANK_SMOOTHING * delta))
+
+	# Rotation autour de l'axe avant (+Z) de Bee, appliquée par-dessus l'orientation d'origine
+	_model.transform.basis = Basis(Vector3.BACK, _bank) * _model_base_basis
+	
+	# Même rotation autour de l'axe avant de Bee, atténuée pour la caméra.
+	# Seule l'orientation change : la position de l'œil reste celle réglée dans bee.tscn.
+	_camera_anchor.transform.basis = Basis(Vector3.BACK, _bank * CAMERA_BANK_FACTOR) * _camera_anchor_base_basis
