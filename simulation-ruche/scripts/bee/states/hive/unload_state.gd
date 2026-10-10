@@ -39,14 +39,14 @@ func exit() -> void:
 
 func update(delta: float) -> BeeState:
 	match _phase:
-		# 1. Marche avec le walker : accélération, évitement des voisines, bords du cadre
+		# Marche avec le walker : accélération, évitement des voisines, bords du cadre
 		Phase.WALKING:
 			if _walk_to(_target, STEER_RATE, ARRIVAL_RADIUS, delta):
 				_phase = Phase.QUEUE
 				bee.play_animation(&"_bee_idle")
 			return null
 
-		# 2. File d'attente : l'abeille reste en place tant qu'aucune receveuse n'est libre
+		# File d'attente : l'abeille reste en place tant qu'aucune receveuse n'est libre
 		Phase.QUEUE:
 			if bee.hive.try_unload(bee):
 				_waited = bee.hive.get_wait_time(bee)
@@ -54,20 +54,20 @@ func update(delta: float) -> BeeState:
 				_phase = Phase.TRANSFER
 			return null
 
-		# 3. Transfert du nectar à la receveuse
+		# Transfert du nectar à la receveuse
 		Phase.TRANSFER:
 			_transfer_left -= delta
 			if _transfer_left > 0.0:
 				return null
 
-	# 4. Décharger le nectar dans la ruche
+	# Décharger le nectar dans la ruche
 	if bee.nectar > 0.0:
 		bee.hive.deposit(bee.nectar)
 		bee.nectar = 0.0
 		# Nectar déchargé : les pelotes disparaissent
 		bee.update_pollen()
 
-	# 5. Évaluer la source et choisir l'état suivant
+	# Évaluer la source et choisir l'état suivant
 	var verdict := _evaluate_source()
 	if verdict == 1:
 		# Saturation de la ruche : plus l'attente a été longue, moins l'abeille
