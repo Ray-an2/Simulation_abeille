@@ -28,17 +28,7 @@ const APPROACH_DISTANCE := 0.02
 
 ## Marche vers le point d'approche : tendance (rad/s), virages aléatoires (rad/s)
 ## et distance d'arrivée (m), supérieure au rayon de virage.
-const FLOOR_STEER_RATE := 3.0
-const FLOOR_TURN_RATE := 2.0
 const APPROACH_RADIUS := 0.01
-
-## Traversée du tunnel : guidage serré, presque pas d'errance.
-const TUNNEL_STEER_RATE := 8.0
-const TUNNEL_TURN_RATE := 0.3
-const TUNNEL_EXIT_RADIUS := 0.005
-
-## Distance (m) de fin des déplacements en ligne droite (move_toward atteint la cible exactement).
-const EXACT_RADIUS := 0.0005
 
 # =============================================================================
 # Types
@@ -123,31 +113,24 @@ func update(delta: float) -> BeeState:
 		Phase.TO_TUNNEL:
 			# Point d'approche dans l'axe du tunnel, un peu avant son entrée
 			var approach := hive.get_tunnel_inner_end() - hive.get_tunnel_axis() * APPROACH_DISTANCE
-			if _walk_to(approach, FLOOR_STEER_RATE, APPROACH_RADIUS, delta, FLOOR_TURN_RATE):
+			if _walk_on_floor(approach, delta):
 				_phase = Phase.THROUGH_TUNNEL
 
 		Phase.THROUGH_TUNNEL:
-			# Guidage serré : l'abeille s'aligne sur l'axe avant d'entrer et y reste.
-			# Le walker continue d'éviter et de freiner derrière les autres abeilles.
-			if _walk_to(hive.get_tunnel_outer_end(), TUNNEL_STEER_RATE, TUNNEL_EXIT_RADIUS,
-					delta, TUNNEL_TURN_RATE):
+			if _walk_through_tunnel(hive.get_tunnel_outer_end(), delta):
 				_porch = hive.get_random_porch_point()
 				_phase = Phase.TO_PORCH
 
 		Phase.TO_PORCH:
 			# Tout droit hors du tunnel : l'abeille s'écarte du mur avant de tourner
-			_walk_straight(_porch, _wander_speed(delta), delta)
-			if bee.is_near(_porch, EXACT_RADIUS):
+			if _walk_straight_to(_porch, delta):
 				_takeoff = hive.get_random_landing_position()
 				_phase = Phase.TO_TAKEOFF
 
 		Phase.TO_TAKEOFF:
-			# Ligne droite jusqu'au point de décollage : courte, et la planche peut être
-			# à une autre hauteur que le tunnel (le walker reste à hauteur constante)
-			_walk_straight(_takeoff, _wander_speed(delta), delta)
-			if bee.is_near(_takeoff, EXACT_RADIUS):
-				# Décollage. Le passage à un état Dehors démarre le bourdonnement
-				# individuel (Bee.change_state).
+			# Décollage. Le passage à un état Dehors démarre le bourdonnement
+			# individuel (Bee.change_state).
+			if _walk_straight_to(_takeoff, delta):
 				return _next
 
 	return null
@@ -163,4 +146,4 @@ func _start_drop() -> void:
 	# Ailes en mouvement pendant la chute
 	bee.play_animation(&"_bee_hover")
 	var p := bee.global_position + bee.hive.get_comb_normal() * bee.hive.drop_clearance
-	_drop_target = bee.hive.clamp_to_floor(Vector3(p.x, bee.hive.get_floor_height(), p.z))
+	_drop_target = bee.hive.get_floor_point_below(bee.global_position)

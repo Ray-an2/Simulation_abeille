@@ -1,21 +1,13 @@
 class_name EnterState extends HiveState
 ## Entrée dans la ruche : marche du point d'atterrissage jusqu'au tunnel, le traverse,
 ## rejoint le pied du cadre sur le plancher, puis saute sur le bas du cadre.
-## Mènera à UNLOAD une fois cet état écrit ; IDLE en attendant.
 
 # =============================================================================
 # Constantes
 # =============================================================================
 
-## Traversée du tunnel : guidage serré, presque pas d'errance.
-const TUNNEL_STEER_RATE := 8.0
-const TUNNEL_TURN_RATE := 0.3
-const TUNNEL_EXIT_RADIUS := 0.005
 
-## Marche vers le pied du cadre : tendance (rad/s), virages aléatoires (rad/s)
-## et distance d'arrivée (m), supérieure au rayon de virage.
-const FLOOR_STEER_RATE := 3.0
-const FLOOR_TURN_RATE := 2.0
+## Marche vers le pied du cadre : tendance (rad/s)
 const FOOT_RADIUS := 0.01
 
 ## Écart maximal (m) autour du point du cadre le plus proche de l'entrée, pour que
@@ -24,9 +16,6 @@ const CLIMB_SPREAD := 0.05
 
 ## Vitesse (m/s) du saut du plancher vers le cadre.
 const CLIMB_SPEED := 0.1
-
-## Distance (m) de fin des déplacements en ligne droite (move_toward atteint la cible exactement).
-const EXACT_RADIUS := 0.0005
 
 # =============================================================================
 # Types
@@ -66,7 +55,6 @@ func enter() -> void:
 	# Sur la planche : l'évitement doit se faire dans le plan horizontal
 	# (Bee.change_state vient de remettre le walker sur le cadre)
 	bee.walker.reset(CombWalker.Surface.FLOOR)
-	# … (calcul de _climb_target et _comb_foot inchangé)
 
 	# Point d'arrivée sur le cadre : près du bas, côté entrée, un peu au hasard
 	var hive := bee.hive
@@ -116,7 +104,9 @@ func update(delta: float) -> BeeState:
 				facing = Vector3.UP
 			bee.hop_towards(_climb_target, CLIMB_SPEED, facing, normal, delta)
 			if bee.is_near(_climb_target, EXACT_RADIUS):
-				return bee.idle   # TODO : bee.unload une fois UNLOAD écrit
+				# Toujours UNLOAD, même sans nectar : c'est là que la source est évaluée.
+				# Une exploratrice rentrée bredouille en ressort aussitôt vers IDLE.
+				return bee.unload
 
 	return null
 

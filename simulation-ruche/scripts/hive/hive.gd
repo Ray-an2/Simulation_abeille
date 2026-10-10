@@ -350,6 +350,34 @@ func get_comb_bees_near(pos: Vector3, radius: float, exclude: Bee = null) -> Arr
 		if other != exclude and other.global_position.distance_squared_to(pos) < r2:
 			result.append(other)
 	return result
+
+## Point tiré au hasard dans la zone de déambulation du cadre.
+## Contrairement à get_random_spawn_transform(), ne réserve pas la position.
+func get_random_comb_point() -> Vector3:
+	return _spawn.global_transform * Vector3(
+		_comb_center_local.x + randf_range(-spawn_extent.x, spawn_extent.x),
+		0.0,   # à la surface du cadre
+		_comb_center_local.z + randf_range(-spawn_extent.y, spawn_extent.y)
+	)
+
+## Point du plancher sous [param comb_point], écarté du cadre de drop_clearance
+## pour ne pas traverser la traverse du bas. Sert à la chute en sortie (LEAVE)
+## comme au point de départ du saut en entrée (ENTER).
+func get_floor_point_below(comb_point: Vector3) -> Vector3:
+	var p := comb_point + get_comb_normal() * drop_clearance
+	return clamp_to_floor(Vector3(p.x, get_floor_height(), p.z))
+
+# =============================================================================
+# Déchargement (boucle négative : saturation)
+# =============================================================================
+
+## Nectar accumulé par la colonie depuis le début de la simulation.
+var nectar_stock: float = 0.0
+
+## Ajoute [param amount] au stock de la ruche (appelé par UNLOAD).
+## TODO : passer par une receveuse libre (try_unload) pour la boucle de saturation.
+func deposit(amount: float) -> void:
+	nectar_stock += amount
 	
 # =============================================================================
 # Danses (boucle positive : recrutement)

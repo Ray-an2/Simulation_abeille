@@ -151,6 +151,10 @@ func get_avoidance(forward: Vector3 = Vector3.ZERO) -> Vector3:
 	var normal := get_normal()
 	var away := Vector3.ZERO
 	for other in bee.hive.get_comb_bees_near(bee.global_position, AVOID_RADIUS, bee):
+		# Voisine sur une autre surface (cadre / plancher) : proche en 3D,
+		# mais pas sur le même chemin
+		if other.walker.surface != surface:
+			continue
 		# Vecteur voisine → abeille, ramené dans le plan du cadre
 		var diff := (bee.global_position - other.global_position).slide(normal)
 		var d := diff.length()

@@ -78,6 +78,10 @@ var trip_time: float = 0.0
 ## Distance à plat ruche -> source
 var distance: float = 0.0
 
+## Angle (rad) entre la direction du soleil et celle de la source, vu de la ruche.
+## Calculé en UNLOAD, encodé par DANCE dans l'orientation de la phase frétillante.
+var angle: float = 0.0
+
 # =============================================================================
 # États
 # =============================================================================
@@ -146,6 +150,10 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if current_state == null:
 		return
+	# Chronomètre du trajet : temps passé dehors, remis à zéro par UNLOAD
+	# après évaluation de la source
+	if current_state is FieldState:
+		trip_time += delta
 	var next: BeeState = current_state.update(delta)
 	if next != null:
 		change_state(next)

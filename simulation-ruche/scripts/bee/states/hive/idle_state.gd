@@ -51,11 +51,15 @@ func update(delta: float) -> BeeState:
 		return bee.leave_hive.then(bee.scout)
 
 	_update_phase(delta)
+
+	# Errance pendant la marche : virages plus francs qu'en LEAVE / ENTER (MAX_TURN_RATE)
+	var speed := 0.0
 	if _walking:
-		_update_wander(delta)
+		_wander_turn(delta, MAX_TURN_RATE)
+		speed = _wander_speed(delta)
 
 	# Appelé aussi en pause (vitesse visée 0) : l'abeille finit de freiner
-	bee.walker.step(_speed_factor if _walking else 0.0, delta)
+	bee.walker.step(speed, delta)
 	return null
 
 # =============================================================================
@@ -81,32 +85,12 @@ func _update_phase(delta: float) -> void:
 		else:
 			_start_walk()
 
-## Errance : tire de temps en temps une nouvelle vitesse et une nouvelle vitesse
-## de virage, et fait tourner le cap en conséquence.
-func _update_wander(delta: float) -> void:
-	# Nouvelle vitesse visée de temps en temps : l'abeille accélère ou ralentit en marchant
-	_speed_change_time -= delta
-	if _speed_change_time <= 0.0:
-		_speed_factor = randf_range(SPEED_FACTOR_MIN, SPEED_FACTOR_MAX)
-		_speed_change_time = randf_range(SPEED_CHANGE_MIN, SPEED_CHANGE_MAX)
-
-	# Nouvelle vitesse de virage de temps en temps : donne une trajectoire sinueuse
-	_turn_change_time -= delta
-	if _turn_change_time <= 0.0:
-		_turn_rate = randf_range(-MAX_TURN_RATE, MAX_TURN_RATE)
-		_turn_change_time = randf_range(TURN_CHANGE_MIN, TURN_CHANGE_MAX)
-
-	bee.walker.turn(_turn_rate * delta)
-
-## Démarre une phase de marche avec une durée, une vitesse et un virage aléatoires.
+## Démarre une phase de marche d'une durée aléatoire.
 func _start_walk() -> void:
 	_walking = true
 	_phase_time = randf_range(WALK_MIN, WALK_MAX)
-	_speed_factor = randf_range(SPEED_FACTOR_MIN, SPEED_FACTOR_MAX)
-	# Premier changement de vitesse après un délai : la vitesse tirée ci-dessus
-	# a le temps d'être atteinte
-	_speed_change_time = randf_range(SPEED_CHANGE_MIN, SPEED_CHANGE_MAX)
-	_turn_change_time = 0.0   # force un nouveau virage dès la première frame
+	# Nouveau virage et nouvelle vitesse dès la première frame de marche
+	_reset_wander()
 
 ## Démarre une pause de [param duration] secondes.
 func _start_pause(duration: float) -> void:

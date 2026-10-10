@@ -25,6 +25,26 @@ const SPEED_CHANGE_MIN := 0.5
 const SPEED_CHANGE_MAX := 1.5
 
 # =============================================================================
+# Trajets entre le cadre et la planche d'envol (LEAVE, ENTER)
+# =============================================================================
+
+## Marche sur le plancher : tendance vers la cible (rad/s) et virages aléatoires (rad/s).
+const FLOOR_STEER_RATE := 3.0
+const FLOOR_TURN_RATE := 2.0
+
+## Distance d'arrivée (m) sur le plancher. Doit dépasser le rayon de virage
+## (walk_speed × 1,3 / FLOOR_STEER_RATE ≈ 0,9 cm), sinon l'abeille tourne autour.
+const FLOOR_ARRIVAL_RADIUS := 0.01
+
+## Traversée du tunnel : guidage serré, presque pas d'errance.
+const TUNNEL_STEER_RATE := 8.0
+const TUNNEL_TURN_RATE := 0.3
+const TUNNEL_EXIT_RADIUS := 0.005
+
+## Distance (m) de fin des déplacements en ligne droite (move_toward atteint la cible exactement).
+const EXACT_RADIUS := 0.0005
+
+# =============================================================================
 # État interne de l'errance
 # =============================================================================
 
@@ -89,3 +109,20 @@ func _walk_straight(target: Vector3, speed: float, delta: float) -> void:
 		var urgency := minf(bee.walker.get_avoidance(forward.normalized()).length(), 1.0)
 		brake = 1.0 - CombWalker.AVOID_BRAKE * urgency
 	bee.walk_towards(target, delta, Vector3.UP, speed * brake)
+
+## Marche sur le plancher jusqu'à [param target], avec une errance modérée.
+## Renvoie true à l'arrivée.
+func _walk_on_floor(target: Vector3, delta: float) -> bool:
+	return _walk_to(target, FLOOR_STEER_RATE, FLOOR_ARRIVAL_RADIUS, delta, FLOOR_TURN_RATE)
+
+## Traverse le tunnel jusqu'à [param tunnel_end] (extrémité intérieure ou extérieure).
+## L'abeille s'aligne sur l'axe et y reste ; le walker continue d'éviter
+## et de freiner derrière les autres abeilles. Renvoie true à la sortie.
+func _walk_through_tunnel(tunnel_end: Vector3, delta: float) -> bool:
+	return _walk_to(tunnel_end, TUNNEL_STEER_RATE, TUNNEL_EXIT_RADIUS, delta, TUNNEL_TURN_RATE)
+
+## Ligne droite jusqu'à [param target] (planche d'envol, embouchure du tunnel).
+## Renvoie true à l'arrivée exacte.
+func _walk_straight_to(target: Vector3, delta: float) -> bool:
+	_walk_straight(target, _wander_speed(delta), delta)
+	return bee.is_near(target, EXACT_RADIUS)

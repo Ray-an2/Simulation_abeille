@@ -3,11 +3,19 @@
 [ext_resource type="PackedScene" uid="uid://bqr2r6el01003" path="res://assets/bee/bee.gltf" id="1_h63oj"]
 [ext_resource type="Script" path="res://scripts/bee/bee.gd" id="1_j85ti"]
 [ext_resource type="AudioStream" uid="uid://bcu40au4pgxqd" path="res://assets/audio/bee-flying.ogg" id="3_5g3tm"]
+[ext_resource type="PackedScene" uid="uid://bpkeflapu5t7h" path="res://assets/bee/pollen_ball.tscn" id="3_evbkq"]
 
 [node name="Bee" type="Node3D" unique_id=2131089251]
 script = ExtResource("1_j85ti")
 
 [node name="Model" parent="." unique_id=2045436885 instance=ExtResource("1_h63oj")]
+
+[node name="BonePollenLeft" type="BoneAttachment3D" parent="." unique_id=471883853]
+visible = false
+use_external_skeleton = true
+external_skeleton = NodePath("../Model/Sketchfab_model/root/GLTF_SceneRootNode/RootNode_0_0/skeletal_1_1/GLTF_created_0/Skeleton3D")
+
+[node name="PollenBall" parent="BonePollenLeft" unique_id=1373978399 instance=ExtResource("3_evbkq")]
 
 [node name="CameraAnchor" type="Marker3D" parent="." unique_id=1955092898]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.003258166, 0.006792824)
@@ -20,3 +28,5 @@ unit_size = 5.0
 max_db = -10.0
 max_distance = 1.5
 bus = &"Bees"
+
+[editable path="Model"]
