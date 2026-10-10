@@ -4,6 +4,9 @@ class_name CameraSwitcher extends Node3D
 ## Vues disponibles, dans l'ordre des touches. La première est la vue de départ.
 @export var pcams: Array[PhantomCamera3D]
 
+## Durée (s) de la transition entre deux vues fixes.
+@export var transition_duration: float = 0.5
+
 @export_group("Vue abeille")
 
 ## PCam placé sur l'abeille suivie. Doit aussi figurer dans pcams
@@ -42,11 +45,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_fullscreen()
 		return
 	if event.physical_keycode == KEY_TAB:
-		# Maj+Tab : abeille précédente
 		_select_bee(_bee_index + (-1 if event.shift_pressed else 1))
-		# Changer d'abeille bascule aussi sur la vue abeille
-		_select_view(pcams.find(bee_view))
+		# Saut sec vers l'abeille, même si on venait d'une vue fixe
+		_select_view(pcams.find(bee_view), true)
 		return
+	
 	if event.physical_keycode == KEY_V:
 		_bee_vision_enabled = not _bee_vision_enabled
 		_update_bee_vision()
@@ -55,9 +58,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	_select_view(event.physical_keycode - KEY_1)
 
 ## Donne la priorité la plus haute à la vue [param index], 0 aux autres.
-func _select_view(index: int) -> void:
+## [param instant] : pas de transition, la caméra saute directement sur la vue.
+func _select_view(index: int, instant := false) -> void:
 	if index < 0 or index >= pcams.size():
 		return
+	# Le tween utilisé est celui de la PCam d'arrivée : on le règle avant de l'activer
+	pcams[index].tween_duration = 0.0 if instant else transition_duration
 	for i in pcams.size():
 		pcams[i].priority = 10 if i == index else 0
 	_current_view = index
