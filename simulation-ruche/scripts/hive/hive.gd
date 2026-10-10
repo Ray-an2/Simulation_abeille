@@ -416,7 +416,7 @@ func _update_buzz_volume(delta: float) -> void:
 # =============================================================================
 # File d'attente (variable) 
 # =============================================================================
-var nectar_stock := 0.0
+var necta_stock := 0.0
 var _unload_queue: Array[Bee] = []
 var _queue_entry: Dictionary = {}       # Bee -> instant d'entrée dans la file
 var _measured_wait: Dictionary = {}     # Bee -> attente mesurée à la prise en charge
@@ -469,8 +469,8 @@ func leave_unload_queue(bee: Bee) -> void:
 	_measured_wait.erase(bee)
 
 ## Ajoute le nectar au stock de la ruche.
-func deposit(amount: float) -> void:
-	nectar_stock += amount
+func deposite(amount: float) -> void:
+	necta_stock += amount
 
 ## Longueur de la file, pour observer la saturation.
 func get_queue_length() -> int:
