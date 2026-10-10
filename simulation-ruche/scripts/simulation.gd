@@ -13,6 +13,20 @@ class_name Simulation extends Node3D
 ## Scène instanciée pour chaque abeille (bee.tscn). À assigner dans l'inspecteur.
 @export var bee_scene: PackedScene
 
+@export_group("Ruche")
+
+## Nombre de receveuses : abeilles prises en charge en même temps
+@export_range(1, 20) var receiver_count := 3
+
+## Durée (s) du transfert du nectar à une receveuse
+@export var unload_duration := 3.0
+
+## Attente (s) à partir de laquelle l'envie de danser est réduite au maximum
+@export var max_wait_time := 20.0
+
+## Réduction maximale de la rentabilité de danse due à l'attente (0 = aucune, 1 = totale)
+@export_range(0.0, 1.0) var wait_penalty := 0.8
+
 @export_group("Temps")
 
 ## Nœud Sky3D de la scène
@@ -58,6 +72,12 @@ class_name Simulation extends Node3D
 
 ## Quantité de nectar qu'une abeille peut transporter. FORAGE s'arrête une fois atteinte.
 @export var forage_capacity: float = 10.0
+
+## Temps de butinage minimum 
+@export var foraging_time_min := 4.0
+
+## Temps de butinage maximum
+@export var foraging_time_max := 5.0
 
 @export_group("Déplacement")
 

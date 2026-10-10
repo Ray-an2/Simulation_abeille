@@ -1,31 +1,84 @@
 class_name UnloadState extends HiveState
 ## Déchargement du nectar sur le rayon, puis évaluation de la source visitée.
+## Déroulé : marche jusqu'à un point du rayon -> file d'attente de la ruche ->
+## transfert à une receveuse -> dépôt du nectar -> évaluation de la source.
 ## Sorties :  1 (rentable) -> DANCE    0 (moyenne) -> GO    -1 (mauvaise ou vide) -> IDLE
+
+## Distance (m) d'arrivée au point de déchargement. Doit dépasser le rayon de virage
+## du walker (walk_speed × 1,3 / STEER_RATE ≈ 0,9 cm), sinon l'abeille tourne autour.
+const ARRIVAL_RADIUS := 0.012
+
+## Vitesse de virage (rad/s) vers le point de déchargement.
+const STEER_RATE := 3.0
+
+## Étapes du déchargement
+enum Phase { WALKING, QUEUE, TRANSFER }
 
 ## Point du rayon où l'abeille va décharger (tiré au hasard à l'entrée)
 var _target: Vector3
 
+## Étape en cours
+var _phase := Phase.WALKING
+
+## Temps restant (s) du transfert à la receveuse
+var _transfer_left := 0.0
+
+## Temps (s) passé dans la file d'attente, lu quand une receveuse la prend en charge
+var _waited := 0.0
 
 func enter() -> void:
-	# Point au hasard sur le cadre (position monde)
-	_target = bee.hive.get_random_spawn_transform().origin
+	# Nouveaux tirages de virage et de vitesse dès la première frame
+	_reset_wander()
+	_target = bee.hive.get_random_comb_point()
+	_phase = Phase.WALKING
+	_waited = 0.0
 
+func exit() -> void:
+	# Quitte la file si l'état est interrompu avant la fin du déchargement
+	bee.hive.leave_unload_queue(bee)
 
 func update(delta: float) -> BeeState:
-	# Marcher jusqu'au point de déchargement
-	bee.walk_towards(_target, delta, bee.hive.get_comb_normal())
-	if not bee.is_near(_target, bee.simulation.arrival_radius):
-		return null
+	match _phase:
+		# 1. Marche avec le walker : accélération, évitement des voisines, bords du cadre
+		Phase.WALKING:
+			if _walk_to(_target, STEER_RATE, ARRIVAL_RADIUS, delta):
+				_phase = Phase.QUEUE
+				bee.play_animation(&"_bee_idle")
+			return null
 
-	# Décharger le nectar dans la ruche
+		# 2. File d'attente : l'abeille reste en place tant qu'aucune receveuse n'est libre
+		Phase.QUEUE:
+			if bee.hive.try_unload(bee):
+				_waited = bee.hive.get_wait_time(bee)
+				_transfer_left = bee.simulation.unload_duration
+				_phase = Phase.TRANSFER
+			return null
+
+		# 3. Transfert du nectar à la receveuse
+		Phase.TRANSFER:
+			_transfer_left -= delta
+			if _transfer_left > 0.0:
+				return null
+
+	# 4. Décharger le nectar dans la ruche
 	if bee.nectar > 0.0:
 		bee.hive.deposit(bee.nectar)
 		bee.nectar = 0.0
+		# Nectar déchargé : les pelotes disparaissent
+		bee.update_pollen()
 
-	# Évaluer la source et choisir l'état suivant
+	# 5. Évaluer la source et choisir l'état suivant
 	var verdict := _evaluate_source()
 	if verdict == 1:
-		return bee.dance
+		# Saturation de la ruche : plus l'attente a été longue, moins l'abeille
+		# a envie de danser (durée de danse réduite, voire pas de danse du tout)
+		var sim := bee.simulation
+		var wait_ratio := clampf(_waited / sim.max_wait_time, 0.0, 1.0)
+		var dance_quality := bee.known_profitability * (1.0 - sim.wait_penalty * wait_ratio)
+		if dance_quality >= sim.profitability_high:
+			bee.known_profitability = dance_quality   # DANCE : durée proportionnelle
+			return bee.dance
+		return bee.go   # trop de monde à la ruche : elle repart sans danser
 	if verdict == 0:
 		return bee.go
 

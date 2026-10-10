@@ -126,3 +126,66 @@ func _walk_through_tunnel(tunnel_end: Vector3, delta: float) -> bool:
 func _walk_straight_to(target: Vector3, delta: float) -> bool:
 	_walk_straight(target, _wander_speed(delta), delta)
 	return bee.is_near(target, EXACT_RADIUS)
+
+# =============================================================================
+# File d'attente (variable) 
+# =============================================================================
+var nectar_stock := 0.0
+var _unload_queue: Array[Bee] = []
+var _queue_entry: Dictionary = {}       # Bee -> instant d'entrée dans la file
+var _measured_wait: Dictionary = {}     # Bee -> attente mesurée à la prise en charge
+var _receiver_free_at: Array[float] = []
+var _clock := 0.0                       # horloge de la ruche, arrêtée par la pause
+
+# =============================================================================
+# File d'attente (fonction) 
+# =============================================================================
+
+func _physics_process(delta: float) -> void:
+	_clock += delta
+
+## Renvoie true quand une receveuse prend l'abeille en charge, sinon elle reste en file.
+func try_unload(bee: Bee) -> bool:
+	if not _queue_entry.has(bee):
+		_queue_entry[bee] = _clock
+		_unload_queue.append(bee)
+	# Seule la première de la file peut prendre une receveuse libre
+	if _unload_queue[0] != bee:
+		return false
+	var slot := _find_free_receiver(bee.simulation.receiver_count)
+	if slot == -1:
+		return false
+	_receiver_free_at[slot] = _clock + bee.simulation.unload_duration
+	_unload_queue.pop_front()
+	_measured_wait[bee] = _clock - _queue_entry[bee]
+	return true
+
+func _find_free_receiver(count: int) -> int:
+	while _receiver_free_at.size() < count:
+		_receiver_free_at.append(0.0)
+	for i in count:
+		if _receiver_free_at[i] <= _clock:
+			return i
+	return -1
+
+## Temps d'attente de l'abeille, en cours ou terminé.
+func get_wait_time(bee: Bee) -> float:
+	if _measured_wait.has(bee):
+		return _measured_wait[bee]
+	if _queue_entry.has(bee):
+		return _clock - _queue_entry[bee]
+	return 0.0
+
+## Retire l'abeille de la file et efface ses mesures.
+func leave_unload_queue(bee: Bee) -> void:
+	_unload_queue.erase(bee)
+	_queue_entry.erase(bee)
+	_measured_wait.erase(bee)
+
+## Ajoute le nectar au stock de la ruche.
+func deposit(amount: float) -> void:
+	nectar_stock += amount
+
+## Longueur de la file, pour observer la saturation.
+func get_queue_length() -> int:
+	return _unload_queue.size()
