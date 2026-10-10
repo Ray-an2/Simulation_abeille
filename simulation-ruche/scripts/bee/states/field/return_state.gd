@@ -15,5 +15,6 @@ func enter() -> void:
 func update(delta: float) -> BeeState:
 	bee.fly_towards(_landing_spot, delta)
 	if bee.is_near(_landing_spot, LANDING_RADIUS):
+		bee.play_animation(&"_bee_landing")
 		return bee.enter_hive
 	return null
