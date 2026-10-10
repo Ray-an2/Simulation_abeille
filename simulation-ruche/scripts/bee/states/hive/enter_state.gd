@@ -34,7 +34,8 @@ const EXACT_RADIUS := 0.0005
 
 ## Étapes de l'entrée.
 enum Phase {
-	TO_TUNNEL,       ## Marche sur la planche jusqu'à l'extrémité extérieure du tunnel
+	TO_PORCH,        ## Marche sur la planche jusqu'au point de dégagement devant le tunnel
+	TO_TUNNEL,       ## Ligne droite dans l'axe, jusqu'à l'extrémité extérieure du tunnel
 	THROUGH_TUNNEL,  ## Traversée du tunnel jusqu'à son extrémité intérieure
 	TO_COMB_FOOT,    ## Marche sur le plancher jusqu'au pied du cadre
 	CLIMB,           ## Saut sur le bas du cadre en se retournant
@@ -51,13 +52,21 @@ var _phase := Phase.TO_TUNNEL
 var _climb_target := Vector3.ZERO
 var _comb_foot := Vector3.ZERO
 
+## Point de dégagement devant le tunnel, propre à chaque entrée.
+var _porch := Vector3.ZERO
+
 # =============================================================================
 # Méthodes de l'état
 # =============================================================================
 
 func enter() -> void:
-	_phase = Phase.TO_TUNNEL
+	_phase = Phase.TO_PORCH
+	_porch = bee.hive.get_random_porch_point()
 	_reset_wander()
+	# Sur la planche : l'évitement doit se faire dans le plan horizontal
+	# (Bee.change_state vient de remettre le walker sur le cadre)
+	bee.walker.reset(CombWalker.Surface.FLOOR)
+	# … (calcul de _climb_target et _comb_foot inchangé)
 
 	# Point d'arrivée sur le cadre : près du bas, côté entrée, un peu au hasard
 	var hive := bee.hive
@@ -65,16 +74,23 @@ func enter() -> void:
 	_climb_target = hive.get_comb_point_near(edge, CLIMB_SPREAD)
 	# Pied du cadre : sous ce point, écarté du cadre comme pour la chute en sortie
 	var p := _climb_target + hive.get_comb_normal() * hive.drop_clearance
-	_comb_foot = Vector3(p.x, hive.get_floor_height(), p.z)
+	_comb_foot = hive.clamp_to_floor(Vector3(p.x, hive.get_floor_height(), p.z))
 
 func update(delta: float) -> BeeState:
 	var hive := bee.hive
 
 	match _phase:
+		Phase.TO_PORCH:
+			# Depuis le point d'atterrissage : on vient se placer devant le tunnel,
+			# pour y entrer dans l'axe au lieu d'arriver de biais le long du mur
+			_walk_straight(_porch, _wander_speed(delta), delta)
+			if bee.is_near(_porch, EXACT_RADIUS):
+				_phase = Phase.TO_TUNNEL
+		
 		Phase.TO_TUNNEL:
 			# Ligne droite du point d'atterrissage au tunnel : courte, avec un dénivelé éventuel
 			var outer := hive.get_tunnel_outer_end()
-			bee.walk_towards(outer, delta, Vector3.UP, _wander_speed(delta))
+			_walk_straight(outer, _wander_speed(delta), delta)
 			if bee.is_near(outer, EXACT_RADIUS):
 				# Dans le tunnel, au niveau du plancher : le walker prend le relais
 				bee.walker.reset(CombWalker.Surface.FLOOR)

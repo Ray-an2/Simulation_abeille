@@ -50,6 +50,7 @@ enum Phase {
 	DROP,            ## Chute sur le plancher en se retournant
 	TO_TUNNEL,       ## Marche sur le plancher jusqu'au point d'approche du tunnel
 	THROUGH_TUNNEL,  ## Traversée du tunnel jusqu'à son extrémité extérieure
+	TO_PORCH,        ## Ligne droite dans l'axe du tunnel, pour s'écarter du mur
 	TO_TAKEOFF,      ## Marche sur la planche jusqu'au point de décollage
 }
 
@@ -71,6 +72,9 @@ var _drop_target := Vector3.ZERO
 
 ## Point de décollage sur la planche, propre à chaque sortie.
 var _takeoff := Vector3.ZERO
+
+## Point de dégagement devant le tunnel, propre à chaque sortie.
+var _porch := Vector3.ZERO
 
 # =============================================================================
 # Méthodes de l'état
@@ -127,13 +131,20 @@ func update(delta: float) -> BeeState:
 			# Le walker continue d'éviter et de freiner derrière les autres abeilles.
 			if _walk_to(hive.get_tunnel_outer_end(), TUNNEL_STEER_RATE, TUNNEL_EXIT_RADIUS,
 					delta, TUNNEL_TURN_RATE):
+				_porch = hive.get_random_porch_point()
+				_phase = Phase.TO_PORCH
+
+		Phase.TO_PORCH:
+			# Tout droit hors du tunnel : l'abeille s'écarte du mur avant de tourner
+			_walk_straight(_porch, _wander_speed(delta), delta)
+			if bee.is_near(_porch, EXACT_RADIUS):
 				_takeoff = hive.get_random_landing_position()
 				_phase = Phase.TO_TAKEOFF
 
 		Phase.TO_TAKEOFF:
 			# Ligne droite jusqu'au point de décollage : courte, et la planche peut être
 			# à une autre hauteur que le tunnel (le walker reste à hauteur constante)
-			bee.walk_towards(_takeoff, delta, Vector3.UP, _wander_speed(delta))
+			_walk_straight(_takeoff, _wander_speed(delta), delta)
 			if bee.is_near(_takeoff, EXACT_RADIUS):
 				# Décollage. Le passage à un état Dehors démarre le bourdonnement
 				# individuel (Bee.change_state).
@@ -152,4 +163,4 @@ func _start_drop() -> void:
 	# Ailes en mouvement pendant la chute
 	bee.play_animation(&"_bee_hover")
 	var p := bee.global_position + bee.hive.get_comb_normal() * bee.hive.drop_clearance
-	_drop_target = Vector3(p.x, bee.hive.get_floor_height(), p.z)
+	_drop_target = bee.hive.clamp_to_floor(Vector3(p.x, bee.hive.get_floor_height(), p.z))

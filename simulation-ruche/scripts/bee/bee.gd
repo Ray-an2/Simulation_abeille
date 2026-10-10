@@ -107,6 +107,12 @@ func _ready() -> void:
 	# IMPORT_ROOT_SCALE : échelle appliquée à l'import, absente du nœud Model.
 	var model_scale := ($Model as Node3D).global_basis.get_scale().x
 	_walk_anim_world_speed = WALK_ANIM_SPEED * SKELETON_SCALE * IMPORT_ROOT_SCALE * model_scale
+	
+	# Fondu de 0,25 s entre deux animations : masque l'écart de pose des pattes
+	# et des ailes entre takeoff, hover et landing. Réglé ici plutôt que dans
+	# l'inspecteur, car l'AnimationPlayer fait partie du modèle importé.
+	_anim.playback_default_blend_time = 0.25
+	
 	change_state(idle)
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.

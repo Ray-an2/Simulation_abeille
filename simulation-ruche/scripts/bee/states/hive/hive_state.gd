@@ -75,3 +75,17 @@ func _walk_to(target: Vector3, steer_rate: float, radius: float, delta: float,
 	bee.walker.steer_towards(target, steer_rate, delta)
 	bee.walker.step(_wander_speed(delta), delta, steer_from_edges)
 	return bee.is_near(target, radius)
+
+## Marche en ligne droite vers [param target] (planche d'envol, où la hauteur peut différer
+## de celle du tunnel), en freinant derrière une voisine située devant.
+## Pas de contournement : les abeilles font la queue à l'embouchure du tunnel.
+## Le freinage n'est jamais total (AVOID_BRAKE < 1), pour que deux abeilles face à face
+## ne se bloquent pas indéfiniment.
+func _walk_straight(target: Vector3, speed: float, delta: float) -> void:
+	var brake := 1.0
+	# Direction de marche dans le plan horizontal, pour savoir qui est « devant »
+	var forward := (target - bee.global_position).slide(Vector3.UP)
+	if not forward.is_zero_approx():
+		var urgency := minf(bee.walker.get_avoidance(forward.normalized()).length(), 1.0)
+		brake = 1.0 - CombWalker.AVOID_BRAKE * urgency
+	bee.walk_towards(target, delta, Vector3.UP, speed * brake)

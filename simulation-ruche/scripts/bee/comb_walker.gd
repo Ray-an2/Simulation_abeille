@@ -132,8 +132,8 @@ func step(target_speed: float, delta: float, steer_from_edges: bool = true) -> v
 		# Bords traités après l'évitement : une voisine ne peut pas pousser l'abeille hors du cadre
 		target = _keep_inside(delta, steer_from_edges)
 	else:
-		# Plancher : pas de bornes, on vise simplement un point devant
-		target = bee.global_position + heading * LOOK_AHEAD
+		# Plancher et tunnel : bornés par les vitres et les parois du tunnel
+		target = _keep_between_walls(delta, steer_from_edges)
 	# walk_towards() règle aussi la cadence des pattes, freinage compris
 	bee.walk_towards(target, delta, normal, current_speed * brake)
 
@@ -210,4 +210,14 @@ func _keep_inside(delta: float, steer_from_edges: bool) -> Vector3:
 	var clamped := bee.hive.clamp_to_comb(ahead)
 	if steer_from_edges and not ahead.is_equal_approx(clamped):
 		steer_towards(bee.hive.get_comb_center(), EDGE_TURN_RATE, delta)
+	return clamped
+
+## Renvoie le point visé devant l'abeille, ramené entre les parois (vitres, tunnel).
+## Si ce point traversait une paroi et que [param steer_from_edges] est vrai,
+## le cap est réorienté vers le point ramené : l'abeille longe la paroi au lieu de s'y coller.
+func _keep_between_walls(delta: float, steer_from_edges: bool) -> Vector3:
+	var ahead := bee.global_position + heading * LOOK_AHEAD
+	var clamped := bee.hive.clamp_to_floor(ahead)
+	if steer_from_edges and not ahead.is_equal_approx(clamped):
+		steer_towards(clamped, EDGE_TURN_RATE, delta)
 	return clamped

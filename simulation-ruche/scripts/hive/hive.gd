@@ -35,7 +35,21 @@ const SPAWN_MAX_ATTEMPTS := 5
 @export var drop_clearance: float = 0.01
 
 ## Longueur (m) du tunnel d'entrée, centré sur EntranceMarker.
-@export var tunnel_length: float = 0.03
+@export var tunnel_length: float = 0.0025
+
+## Demi-écart (m) entre les deux vitres, au niveau du plancher.
+@export var floor_half_width: float = 0.02
+
+## Demi-largeur (m) du tunnel d'entrée.
+@export var tunnel_half_width: float = 0.01
+
+## Distance (m) devant l'embouchure du tunnel, sur la planche, où l'abeille passe avant
+## de tourner vers son point de décollage (et par où elle arrive avant d'entrer).
+## Environ une longueur d'abeille : elle s'écarte du mur avant de longer la planche.
+@export var porch_distance: float = 0.015
+
+## Marge (m) entre le centre d'une abeille et une paroi : environ sa demi-largeur.
+@export var wall_margin: float = 0.004
 
 ## Zone de décollage et d'atterrissage sur la planche, dans le repère de LandingMarker :
 ## ± landing_half_width sur X, de 0 à landing_depth sur +Z.
@@ -105,9 +119,14 @@ func _process(delta: float) -> void:
 # Points de passage
 # =============================================================================
 
+## Repère du cadre, en coordonnées globales : origine au centre de la zone d'attente,
+## plan X/Z = surface où marchent les abeilles, axe Y = normale du cadre.
+## orthonormalized() retire une éventuelle échelle du marqueur pour ne garder que la rotation.
 func get_spawn_transform() -> Transform3D:
 	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
 
+## Centre du tunnel d'entrée, au niveau du plancher de la ruche.
+## Point de passage entre l'intérieur et la planche d'envol (LEAVE, ENTER).
 func get_entrance_position() -> Vector3:
 	return _entrance.global_position
 	
@@ -129,9 +148,50 @@ func get_tunnel_inner_end() -> Vector3:
 func get_tunnel_outer_end() -> Vector3:
 	return _entrance.global_position + get_tunnel_axis() * tunnel_length * 0.5
 
-func get_landing_position() -> Vector3:
-	return _landing.global_position
+## Point de dégagement devant l'embouchure du tunnel, à porch_distance dans son axe,
+## décalé au hasard sur la largeur utile du tunnel.
+func get_random_porch_point() -> Vector3:
+	var axis := get_tunnel_axis()
+	var side := Vector3.UP.cross(axis).normalized()
+	var half_width := tunnel_half_width - wall_margin
+	return get_tunnel_outer_end() + axis * porch_distance + side * randf_range(-half_width, half_width)
 	
+## Ramène [param point] entre les parois : entre les deux vitres à l'intérieur de la ruche,
+## entre les parois du tunnel dans le tunnel. Seule la position latérale est bornée ;
+## la hauteur et l'avancée ne changent pas. Au-delà du tunnel (planche d'envol),
+## le point est renvoyé tel quel.
+## Suppose le tunnel centré entre les vitres, sur EntranceMarker.
+func clamp_to_floor(point: Vector3) -> Vector3:
+	var axis := get_tunnel_axis()
+	var rel := point - _entrance.global_position
+	# Position le long du tunnel : négative à l'intérieur, positive vers la planche
+	var along := rel.dot(axis)
+	var half_length := tunnel_length * 0.5
+
+	# Dehors, sur la planche : pas de parois
+	if along > half_length:
+		return point
+
+	# Direction latérale et demi-largeur utile selon la zone
+	var side: Vector3
+	var half_width: float
+	if along >= -half_length:
+		# Dans le tunnel : perpendiculaire à son axe, à l'horizontale
+		side = Vector3.UP.cross(axis).normalized()
+		half_width = tunnel_half_width - wall_margin
+	else:
+		# Dans la ruche : d'une vitre à l'autre, le long de la normale du cadre
+		side = get_comb_normal()
+		half_width = floor_half_width - wall_margin
+
+	var lateral := rel.dot(side)
+	return point - side * (lateral - clampf(lateral, -half_width, half_width))
+
+## Point de référence de la planche d'envol (centre du bord, côté tunnel).
+## Pour un point de décollage ou d'atterrissage, préférer get_random_landing_position().
+func get_landing_position() -> Vector3:
+	return _landing.global_positional_position
+
 ## Point tiré au hasard dans la zone de décollage / atterrissage de la planche,
 ## pour que les abeilles ne partent et n'arrivent pas toutes au même endroit.
 func get_random_landing_position() -> Vector3:
@@ -141,9 +201,10 @@ func get_random_landing_position() -> Vector3:
 		randf_range(0.0, landing_depth)
 	)
 
+## Centre de la zone de danse sur le cadre, où les danseuses se regroupent (DANCE)
+## et où les abeilles en attente viennent les suivre (WATCH).
 func get_dance_position() -> Vector3:
 	return _dance.global_position
-	
 	
 # =============================================================================
 # Zone du cadre (déambulation en IDLE)

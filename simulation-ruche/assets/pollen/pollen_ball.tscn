@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://bpkeflapu5t7h"]
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_rduc1"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_o8lmq"]
+albedo_color = Color(0.9098039, 0.6392157, 0.09019608, 1)
+albedo_texture = SubResource("NoiseTexture2D_rduc1")
+
+[sub_resource type="SphereMesh" id="SphereMesh_2t865"]
+radius = 0.002
+height = 0.003
+radial_segments = 6
+rings = 6
+
+[node name="PollenBall" type="Node3D" unique_id=1373978399]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=480116623]
+material_override = SubResource("StandardMaterial3D_o8lmq")
+mesh = SubResource("SphereMesh_2t865")
