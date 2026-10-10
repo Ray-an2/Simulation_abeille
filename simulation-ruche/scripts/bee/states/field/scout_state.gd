@@ -6,11 +6,12 @@ class_name ScoutState extends FieldState
 # Constantes
 # ---------------------------------------------------------------------------
 
-# Errance (quand aucune fleur n'est à portée)
-const TURN_INTERVAL_MIN := 0.8     # secondes entre deux changements de cap
-const TURN_INTERVAL_MAX := 2.0
-const TURN_SMOOTHNESS := 2.0       # plus petit = virage plus lent
-const LOOK_AHEAD := 10.0           # distance du point visé devant l'abeille
+# Vol de Lévy : beaucoup de segments courts, quelques très longs (changement de zone)
+const LEVY_MU := 2.0               # ≈ 2 : stratégie optimale observée chez l'abeille
+const SEGMENT_MIN := 0.5           # longueur minimale, à adapter à l'échelle de la scène
+const SEGMENT_MAX := 10.0          # borne haute, pour ne pas sortir de scout_radius
+const SEGMENT_TOLERANCE := 0.05    # distance à partir de laquelle un segment est terminé
+const SEGMENT_MAX_TRIES := 5       # essais pour trouver un segment qui reste dans scout_radius
 const VERTICAL_VARIATION := 0.3    # peu de variation verticale : plus naturel
 
 # ---------------------------------------------------------------------------
@@ -19,10 +20,8 @@ const VERTICAL_VARIATION := 0.3    # peu de variation verticale : plus naturel
 ## Temps restant avant d'abandonner et de rentrer.
 var _remaining: float
 
-# Errance
-var _direction := Vector3.ZERO
-var _target_direction := Vector3.ZERO
-var _time_before_turn := 0.0
+# Errance (vol de Lévy)
+var _segment_end := Vector3.ZERO    # point d'arrivée du segment en cours
 
 # Fleur
 var _flower: Flower = null
@@ -34,13 +33,11 @@ var _target: Vector3    # position d'atterrissage de la fleur visée
 # ---------------------------------------------------------------------------
 ## Reset du timer à chaque entrée dans l'état + cap initial.
 func enter() -> void:
-	#bee.play_animation(&"_bee_take_off")
+	#bee.play_animation_then(&"_bee_take_off", &"_bee_hover") #fonction à ajouter dans bee
 	bee.play_animation(&"_bee_hover")
 	_remaining = bee.simulation.scout_timeout
 	_flower = null
-	_direction = bee.global_transform.basis.z.normalized()
-	_target_direction = _direction
-	_time_before_turn = 0.0
+	_pick_segment()
 
 
 func update(delta: float) -> BeeState:
@@ -88,28 +85,40 @@ func _find_flower() -> Flower:
 
 
 # ---------------------------------------------------------------------------
-# Déplacement : errance
+# Déplacement : vol de Lévy
 # ---------------------------------------------------------------------------
-## Vol libre avec virages progressifs, utilisé tant qu'aucune fleur n'est repérée.
+## Vole en ligne droite jusqu'à la fin du segment, puis en tire un nouveau.
+## Le lissage des virages est assuré par Bee.fly_towards() (turn_speed).
 func _wander(delta: float) -> void:
-	# Nouveau cap de temps en temps seulement
-	_time_before_turn -= delta
-	if _time_before_turn <= 0.0:
-		_target_direction = _random_direction()
-		_time_before_turn = randf_range(TURN_INTERVAL_MIN, TURN_INTERVAL_MAX)
-
-	# Trop loin de la ruche : on revient vers elle
-	var to_hive := bee.hive.global_position - bee.global_position
-	if to_hive.length() > bee.simulation.scout_radius:
-		_target_direction = to_hive.normalized()
-
-	# Virage progressif (évite les changements de cap brusques)
-	_direction = _direction.lerp(_target_direction, TURN_SMOOTHNESS * delta).normalized()
-
-	# On réutilise le vol de Bee : orientation + déplacement à fly_speed
-	bee.fly_towards(bee.global_position + _direction * LOOK_AHEAD, delta)
-
-
+	bee.fly_towards(_segment_end, delta)
+	if bee.is_near(_segment_end, SEGMENT_TOLERANCE):
+		_pick_segment()
+ 
+ 
+## Tire un nouveau cap et une nouvelle longueur. Si le segment sortirait de scout_radius,
+## on retente ; après SEGMENT_MAX_TRIES échecs, on repart en direction de la ruche.
+func _pick_segment() -> void:
+	var origin := bee.global_position
+	var hive_pos := bee.hive.global_position
+	var max_dist := bee.simulation.scout_radius
+ 
+	for i in SEGMENT_MAX_TRIES:
+		var end := origin + _random_direction() * _levy_length()
+		if end.distance_to(hive_pos) <= max_dist:
+			_segment_end = end
+			return
+ 
+	# Aucun segment valide : retour vers la ruche, sur une longueur de Lévy
+	var to_hive := (hive_pos - origin).normalized()
+	_segment_end = origin + to_hive * minf(_levy_length(), origin.distance_to(hive_pos))
+ 
+ 
+## Longueur d'un segment, tirée selon une loi de puissance P(l) ∝ l^-µ.
+func _levy_length() -> float:
+	# Méthode d'inversion : si u suit U(0,1), l_min·(1−u)^(−1/(µ−1)) suit P(l) ∝ l^−µ
+	var l := SEGMENT_MIN * pow(1.0 - randf(), -1.0 / (LEVY_MU - 1.0))
+	return minf(l, SEGMENT_MAX)
+ 
 func _random_direction() -> Vector3:
 	return Vector3(
 		randf_range(-1.0, 1.0),
