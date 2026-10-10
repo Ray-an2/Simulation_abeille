@@ -9,8 +9,13 @@ class_name Bee extends Node3D
 ## chaque pied recule de 220 unités pendant les 0,25 s d'appui.
 const WALK_ANIM_SPEED := 880.0
 
+## Échelle racine appliquée à l'import du glTF (option « Root Scale »). Avec
+## « Apply Root Scale » activé, elle est intégrée au squelette et aux animations,
+## et n'apparaît donc pas dans l'échelle du nœud Model : il faut la reporter ici.
+const IMPORT_ROOT_SCALE := 0.01
+
 ## Échelle entre le squelette et le modèle (nœud RootNode du glTF).
-const SKELETON_SCALE := 0.01
+const SKELETON_SCALE := 0.0008
 
 ## En dessous de ce facteur de vitesse, l'abeille est considérée à l'arrêt :
 ## évite d'alterner walk et idle pendant les phases d'accélération et de freinage.
@@ -99,9 +104,9 @@ func _ready() -> void:
 	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
 	_buzz.pitch_scale = randf_range(0.9, 1.1)
 	# Conversion de la vitesse de l'animation : unités du squelette → modèle → monde.
-	# global_basis est valide ici : l'abeille est déjà dans l'arbre quand _ready() s'exécute.
+	# IMPORT_ROOT_SCALE : échelle appliquée à l'import, absente du nœud Model.
 	var model_scale := ($Model as Node3D).global_basis.get_scale().x
-	_walk_anim_world_speed = WALK_ANIM_SPEED * SKELETON_SCALE * model_scale
+	_walk_anim_world_speed = WALK_ANIM_SPEED * SKELETON_SCALE * IMPORT_ROOT_SCALE * model_scale
 	change_state(idle)
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
