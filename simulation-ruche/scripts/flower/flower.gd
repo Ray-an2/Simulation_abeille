@@ -100,6 +100,12 @@ func is_empty() -> bool:
 func get_landing_position() -> Vector3:
 	return _pistil_marker.global_position
 
+## Rentabilité entre 0 et 1 selon le stock restant
+func get_profitability() -> float:
+	if state == State.EMPTY: return 0.0
+	var range_size := maxf(simulation.max_resource - simulation.threshold, 0.001)
+	return clampf((resource - simulation.threshold) / range_size, 0.0, 0.1) 
+
 ## Détection de l'espece de fleurs
 func _detect_species() -> Species:
 	var scene_name := scene_file_path.get_file().get_basename().to_lower()
