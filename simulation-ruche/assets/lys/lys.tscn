@@ -2,9 +2,11 @@
 
 [ext_resource type="PackedScene" uid="uid://d0h5x5h3flt8" path="res://assets/lys/scene.gltf" id="1_g1gxa"]
 [ext_resource type="Script" uid="uid://c0rn8tqubfrxl" path="res://scripts/flower/flower.gd" id="1_pnqie"]
+[ext_resource type="Material" uid="uid://bj0p1fsrbaocu" path="res://assets/lys/pollen_lys.tres" id="2_tsvs8"]
 
 [node name="Lys" type="Node3D" unique_id=794056136]
 script = ExtResource("1_pnqie")
+pollen_material = ExtResource("2_tsvs8")
 
 [node name="Model" parent="." unique_id=1128648294 instance=ExtResource("1_g1gxa")]
 

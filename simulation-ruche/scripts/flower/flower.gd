@@ -1,5 +1,10 @@
 class_name Flower extends Node3D
 
+## Matériau des pelotes de pollen récoltées sur cette espèce.
+## Réglé une fois dans la scène de l'espèce (lys.tscn, roseb.tscn, roser.tscn),
+## et non sur chacune des trente instances.
+@export var pollen_material: StandardMaterial3D
+
 ## Signal de changement d'état
 signal state_changed(new_state: State)
 
