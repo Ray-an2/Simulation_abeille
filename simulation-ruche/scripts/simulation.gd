@@ -65,7 +65,7 @@ class_name Simulation extends Node3D
 @export var p_scout: float = 0.005
 
 ## Rayon (unités) de la zone explorée autour de la ruche en SCOUT.
-@export var scout_radius: float = 40.0
+@export var scout_radius: float = 70.0
 
 ## Durée maximale (s) d'exploration en SCOUT avant de rentrer bredouille.
 @export var scout_timeout: float = 90.0
