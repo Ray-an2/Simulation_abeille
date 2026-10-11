@@ -1,11 +1,10 @@
 class_name BeeTracker extends Node
-## Observe toutes les abeilles à chaque image physique et tient pour chacune un
-## historique : temps passé dans l'état, dernières transitions, compteurs de vie,
-## vitesse mesurée et origine de la source connue.
+## Tient pour chaque abeille un historique : temps passé dans l'état, dernières
+## transitions, compteurs de vie, vitesse mesurée et origine de la source connue.
 ##
-## Bee n'est pas modifié : tout est déduit de ce qui change d'une image à l'autre
-## (état, nectar, source, position). Limite : deux transitions dans la même image
-## n'apparaissent que comme une seule dans le journal.
+## Les transitions arrivent par le signal Bee.state_changed, au moment exact où
+## elles ont lieu. Le reste (nectar, source, position) est observé à chaque image
+## physique, en comparant avec l'image précédente.
 
 # =============================================================================
 # Constantes
@@ -50,7 +49,6 @@ class Record:
 	var last_nectar := 0.0
 	var last_flower: Flower = null
 	var last_position := Vector3.ZERO
-	var was_inside := true
 
 # =============================================================================
 # Paramètres réglables
@@ -91,6 +89,8 @@ func _physics_process(delta: float) -> void:
 		var rec: Record = _records.get(bee)
 		if rec == null:
 			_records[bee] = _create_record(bee)
+			# Transitions reçues au moment exact où elles ont lieu
+			bee.state_changed.connect(_on_state_changed)
 		else:
 			_observe(bee, rec, delta)
 
@@ -106,7 +106,12 @@ func get_record(bee: Bee) -> Record:
 ## Nom de classe de l'état courant de [param bee] (IdleState, ScoutState…),
 ## tiré du class_name du script de l'état.
 static func state_of(bee: Bee) -> StringName:
-	return bee.current_state.get_script().get_global_name()
+	return _name_of(bee.current_state)
+
+
+## Nom de classe de [param state], ou &"" pour null (premier appel de change_state).
+static func _name_of(state: BeeState) -> StringName:
+	return state.get_script().get_global_name() if state != null else &""
 
 # =============================================================================
 # Observation
@@ -120,32 +125,32 @@ func _create_record(bee: Bee) -> Record:
 	rec.last_nectar = bee.nectar
 	rec.last_flower = bee.known_flower if is_instance_valid(bee.known_flower) else null
 	rec.last_position = bee.global_position
-	rec.was_inside = bee.current_state is HiveState
 	return rec
 
 
-## Compare l'abeille à l'image précédente et met à jour son historique.
-func _observe(bee: Bee, rec: Record, delta: float) -> void:
-	# --- Changement d'état ---
-	var previous := rec.state_name
-	var current := state_of(bee)
-	if current != previous:
-		rec.transitions.push_front({"time": clock, "from": previous, "to": current})
-		if rec.transitions.size() > LOG_SIZE:
-			rec.transitions.pop_back()
-		if current == &"DanceState":
-			rec.dances += 1
-		rec.state_name = current
-		rec.state_since = clock
-
-	# --- Retour à la ruche : un voyage de plus, bredouille si sans nectar ---
-	var inside := bee.current_state is HiveState
-	if inside and not rec.was_inside:
+## Une transition de [param bee] : journal, temps dans l'état, danses, voyages.
+func _on_state_changed(bee: Bee, from: BeeState, to: BeeState) -> void:
+	var rec: Record = _records.get(bee)
+	if rec == null:
+		return
+	var from_name := _name_of(from)
+	var to_name := _name_of(to)
+	rec.transitions.push_front({"time": clock, "from": from_name, "to": to_name})
+	if rec.transitions.size() > LOG_SIZE:
+		rec.transitions.pop_back()
+	rec.state_name = to_name
+	rec.state_since = clock
+	if to is DanceState:
+		rec.dances += 1
+	# Dehors → Ruche : un voyage de plus. Le nectar n'est pas encore déchargé.
+	if from is FieldState and to is HiveState:
 		rec.trips += 1
 		if bee.nectar <= 0.0:
 			rec.empty_trips += 1
-	rec.was_inside = inside
 
+
+## Compare l'abeille à l'image précédente : nectar livré, nouvelle source, vitesse.
+func _observe(bee: Bee, rec: Record, delta: float) -> void:
 	# --- Déchargement : seul UNLOAD fait baisser la charge ---
 	if bee.nectar < rec.last_nectar:
 		rec.nectar_delivered += rec.last_nectar - bee.nectar
@@ -156,7 +161,7 @@ func _observe(bee: Bee, rec: Record, delta: float) -> void:
 	if flower != rec.last_flower:
 		if flower == null:
 			rec.source_origin = &""
-		elif previous == &"WatchState" or current == &"WatchState":
+		elif _left_watch(rec):
 			rec.source_origin = &"dance"
 		else:
 			rec.source_origin = &"scout"
@@ -167,3 +172,12 @@ func _observe(bee: Bee, rec: Record, delta: float) -> void:
 		var instant := bee.global_position.distance_to(rec.last_position) / delta
 		rec.speed = lerpf(rec.speed, instant, 1.0 - exp(-SPEED_SMOOTHING * delta))
 	rec.last_position = bee.global_position
+
+
+## true si l'abeille est en WATCH ou vient d'en sortir : une source apparue à ce
+## moment-là a été apprise en suivant une danse. Provisoire : remplacé par
+## Bee.recruited_by avec l'amélioration « chaîne de recrutement ».
+func _left_watch(rec: Record) -> bool:
+	if rec.state_name == &"WatchState":
+		return true
+	return not rec.transitions.is_empty() and rec.transitions[0].from == &"WatchState"

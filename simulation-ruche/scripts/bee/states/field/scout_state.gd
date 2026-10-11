@@ -1,23 +1,37 @@
 class_name ScoutState extends FieldState
 ## État d'exploration : l'abeille s'éloigne de la ruche en marche de Lévy corrélée,
-## jusqu'à repérer une fleur non vide (→ elle vole vers elle puis passe en FORAGE),
+## jusqu'à repérer une fleur libre (→ elle la réserve, vole vers elle puis passe en FORAGE),
 ## ou manquer de temps (→ RETURN).
+## Une fleur est libre si elle n'est ni vide ni réservée par une autre abeille :
+## les exploratrices se répartissent sur les fleurs au lieu de s'agglutiner.
 
-# ---------------------------------------------------------------------------
-# Constantes
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Constantes : marche de Lévy
+# =============================================================================
 
-# Longueur des segments : loi de puissance (vol de Lévy), beaucoup de segments
-# courts, quelques très longs (changement de zone)
-const LEVY_MU := 2.0               # ≈ 2 : optimum théorique pour des cibles rares
-const SEGMENT_MIN := 1.5           # longueur minimale (m)
-const SEGMENT_MAX := 20.0          # borne haute (m), pour ne pas sortir de scout_radius
-const SEGMENT_MAX_TRIES := 5       # essais pour trouver un segment valide
+## Exposant de la loi de puissance des longueurs de segment, P(l) ∝ l^-µ.
+## ≈ 2 : optimum théorique pour des cibles rares (beaucoup de segments courts,
+## quelques très longs pour changer de zone).
+const LEVY_MU := 2.0
+
+## Longueur minimale (m) d'un segment.
+const SEGMENT_MIN := 1.5
+
+## Borne haute (m) d'un segment, pour ne pas sortir de scout_radius d'un seul trait.
+const SEGMENT_MAX := 20.0
+
+## Nombre d'essais pour trouver un segment valide (dans la zone, sans obstacle)
+## avant de se replier vers la ruche.
+const SEGMENT_MAX_TRIES := 5
 
 ## Écart-type (rad) du changement de cap entre deux segments. Marche corrélée :
-## l'abeille garde globalement sa direction (0,6 rad ≈ 35°) au lieu d'en tirer
+## l'abeille garde globalement sa direction (0,4 rad ≈ 23°) au lieu d'en tirer
 ## une au hasard à chaque segment, ce qui la ferait piétiner autour de la ruche.
 const TURN_SIGMA := 0.4
+
+# =============================================================================
+# Constantes : zone d'exploration
+# =============================================================================
 
 ## Demi-angle (rad) du cône de départ, centré sur la direction opposée à la ruche.
 const DEPARTURE_SPREAD := PI / 2.0
@@ -34,11 +48,12 @@ const WAYPOINT_RADIUS := 0.3
 ## son centre est dans la forme de collision, l'abeille ne pourrait pas l'atteindre.
 const HIVE_KEEP_OUT := 1.0
 
-# ---------------------------------------------------------------------------
-# Variables
-# ---------------------------------------------------------------------------
+# =============================================================================
+# État interne
+# =============================================================================
 
-## Temps restant avant d'abandonner et de rentrer.
+## Temps restant (s) avant d'abandonner et de rentrer. Ne décompte que
+## pendant l'errance : une abeille qui a repéré une fleur va jusqu'au bout.
 var _remaining: float
 
 ## Cap horizontal courant (unitaire), conservé d'un segment à l'autre.
@@ -47,16 +62,18 @@ var _heading := Vector3.FORWARD
 ## Point d'arrivée du segment en cours.
 var _segment_end := Vector3.ZERO
 
-# Fleur
+## Fleur repérée et réservée, vers laquelle l'abeille vole. null tant qu'elle erre.
 var _flower: Flower = null
-var _target: Vector3    # position d'atterrissage de la fleur visée
 
+## Point de pose sur la fleur visée (pistil).
+var _target: Vector3
 
-# ---------------------------------------------------------------------------
-# Cycle de vie de l'état
-# ---------------------------------------------------------------------------
+# =============================================================================
+# Méthodes de l'état
+# =============================================================================
 
-## Reset du timer à chaque entrée dans l'état, cap de départ et premier segment.
+## Remet le chrono à zéro, tire le cap de départ et le premier segment,
+## puis décolle si l'abeille est posée (sortie de LEAVE).
 func enter() -> void:
 	bee.play_animation(&"_bee_hover")
 	_remaining = bee.simulation.scout_timeout
@@ -65,10 +82,17 @@ func enter() -> void:
 	_pick_segment()
 	begin_flight()
 
+## Libère la fleur visée en quittant l'état. En cas d'arrivée, FORAGE
+## la réserve de nouveau dans son enter(), dans le même change_state().
+func exit() -> void:
+	if _flower != null:
+		_flower.release(bee)
+	_flower = null
 
 func update(delta: float) -> BeeState:
-	if update_takeoff(_segment_end, delta): return null
-	
+	if update_takeoff(_segment_end, delta):
+		return null
+
 	_update_flower_search()
 
 	if _flower != null:
@@ -84,29 +108,32 @@ func update(delta: float) -> BeeState:
 		_wander(delta)
 	return null
 
-
-# ---------------------------------------------------------------------------
+# =============================================================================
 # Recherche de fleur
-# ---------------------------------------------------------------------------
+# =============================================================================
 
 ## Abandonne la fleur visée si elle est vide, et en cherche une nouvelle si besoin.
 func _update_flower_search() -> void:
 	if _flower != null and _flower.is_empty():
+		_flower.release(bee)
 		_flower = null
 		reset_landing()
 
 	if _flower == null:
 		_flower = _find_flower()
 		if _flower != null:
+			# Réussit toujours : _find_flower() n'a retenu qu'une fleur libre
+			_flower.try_claim(bee)
 			_target = _flower.get_landing_position()
 
-
-## Fleur non vide la plus proche dans le rayon de perception, ou null.
+## Fleur libre (ni vide, ni réservée par une autre) la plus proche
+## dans le rayon de perception, ou null.
 func _find_flower() -> Flower:
 	var best: Flower = null
+	# Comparaison des carrés : évite une racine carrée par fleur
 	var best_d2 := bee.simulation.perception_radius ** 2
 	for f in bee.simulation.flowers:
-		if f.is_empty():
+		if not f.is_free_for(bee):
 			continue
 		var d2 := bee.global_position.distance_squared_to(f.get_landing_position())
 		if d2 < best_d2:
@@ -114,10 +141,9 @@ func _find_flower() -> Flower:
 			best_d2 = d2
 	return best
 
-
-# ---------------------------------------------------------------------------
+# =============================================================================
 # Déplacement : marche de Lévy corrélée
-# ---------------------------------------------------------------------------
+# =============================================================================
 
 ## Vol continu jusqu'à la fin du segment (sans freinage), puis segment suivant.
 func _wander(delta: float) -> void:
@@ -125,7 +151,6 @@ func _wander(delta: float) -> void:
 	bee.fly_towards(_segment_end, delta, false, bee.simulation.scout_speed)
 	if bee.is_near(_segment_end, WAYPOINT_RADIUS):
 		_pick_segment()
-
 
 ## Cap de départ : à l'opposé de la ruche, avec un écart aléatoire,
 ## pour que les exploratrices se répartissent autour de la colonie.
@@ -136,7 +161,6 @@ func _departure_heading() -> Vector3:
 		# Abeille pile au-dessus du centre de la ruche : cap quelconque
 		return Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
 	return away.normalized().rotated(Vector3.UP, randf_range(-DEPARTURE_SPREAD, DEPARTURE_SPREAD))
-
 
 ## Tire un nouveau segment dans le prolongement du cap courant. S'il sort de
 ## scout_radius ou traverse un obstacle, on retente avec un autre écart de cap ;
@@ -165,7 +189,6 @@ func _pick_segment() -> void:
 	var length := minf(_levy_length(), maxf(origin.distance_to(hive_pos) - HIVE_KEEP_OUT, 0.0))
 	_segment_end = origin + (hive_pos - origin).normalized() * length
 
-
 ## Fait dévier le cap d'un petit angle aléatoire, puis l'infléchit vers la ruche
 ## d'autant plus que l'abeille approche du bord de la zone d'exploration.
 func _turn_heading(origin: Vector3, hive_pos: Vector3, max_dist: float) -> void:
@@ -180,7 +203,6 @@ func _turn_heading(origin: Vector3, hive_pos: Vector3, max_dist: float) -> void:
 		# Rotation plutôt que lerp : fonctionne aussi quand la ruche est pile derrière
 		var angle := _heading.signed_angle_to(to_hive, Vector3.UP)
 		_heading = _heading.rotated(Vector3.UP, angle * pull)
-
 
 ## Longueur d'un segment, tirée selon une loi de puissance P(l) ∝ l^-µ.
 func _levy_length() -> float:

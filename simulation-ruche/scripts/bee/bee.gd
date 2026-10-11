@@ -1,6 +1,10 @@
 class_name Bee extends Node3D
 ## Agent abeille ouvrière, piloté par une machine à états hiérarchique.
 
+## Émis par change_state() après l'entrée dans le nouvel état.
+## [param from] vaut null au premier appel (état initial).
+signal state_changed(bee: Bee, from: BeeState, to: BeeState)
+
 # =============================================================================
 # Constantes
 # =============================================================================
@@ -242,6 +246,8 @@ func _physics_process(delta: float) -> void:
 ## ([method BeeState.enter]). Seul point de passage de toutes les transitions.
 ## Prévient aussi la ruche et le son quand l'abeille passe de Ruche à Dehors ou l'inverse.
 func change_state(next: BeeState) -> void:
+	var previous := current_state 
+	
 	# Super-état avant / après : seul un passage Ruche ↔ Dehors nous intéresse
 	var was_inside := current_state is HiveState   # false au premier appel (null)
 	var is_inside := next is HiveState
@@ -257,6 +263,7 @@ func change_state(next: BeeState) -> void:
 		_on_location_changed(is_inside)
 
 	current_state.enter()
+	state_changed.emit(self, previous, next)
 
 ## Prévient la ruche, réinitialise la marche et allume/coupe le bourdonnement individuel.
 func _on_location_changed(inside: bool) -> void:
