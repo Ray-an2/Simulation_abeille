@@ -258,7 +258,7 @@ func _ready() -> void:
 		flower.setup(self)
 	for i in bee_count:
 		var bee: Bee = bee_scene.instantiate()
-		bee.name = "Bee_%03d" % (i + 1)   # Bee_001, Bee_002...
+		bee.name = _bee_name(i + 1)   # 1re, 2e, 3e… 100e
 		bee.hive = hive
 		bee.simulation = self
 		# Position fixée AVANT add_child : add_child déclenche _ready() puis IdleState.enter(),
@@ -268,6 +268,10 @@ func _ready() -> void:
 		bee.transform = bees_container.global_transform.affine_inverse() * hive.get_random_spawn_transform()
 		bees_container.add_child(bee)	# Position d'apparition
 
+## Nom d'une abeille, en clin d'œil aux Fourmis de Bernard Werber (« 103 683e »).
+## Ouvrières, donc féminin : 1re, puis 2e, 3e…
+func _bee_name(n: int) -> String:
+	return "1re" if n == 1 else "%de" % n
 
 ## Fait avancer l'horloge simulée et le soleil.
 func _process(delta: float) -> void:

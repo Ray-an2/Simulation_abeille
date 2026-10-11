@@ -42,4 +42,8 @@ max_db = -10.0
 max_distance = 1.5
 bus = &"Bees"
 
+[node name="HeadMarker" type="Marker3D" parent="." unique_id=95220703]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0021221675, 0.0056819804)
+
 [editable path="Model"]

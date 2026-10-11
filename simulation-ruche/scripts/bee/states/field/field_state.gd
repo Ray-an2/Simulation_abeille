@@ -58,7 +58,23 @@ const HOVER_HEIGHT := 0.008
 ## une fleur, petite et souvent inclinée, qu'elle inspecte avant de s'y poser.
 ## Une durée nulle saute l'étape HOVER.
 const HOVER_TIME_BOARD := 0.0
-const HOVER_TIME_FLOWER := 0.3
+const HOVER_TIME_FLOWER := 2.0
+
+## Amplitude (m) des dérives pendant le stationnaire : dans le plan de la surface,
+## puis selon la normale. Rester bien en dessous de HOVER_HEIGHT pour ne pas toucher.
+const HOVER_WOBBLE_LATERAL := 0.003
+const HOVER_WOBBLE_VERTICAL := 0.0015
+
+## Amplitude (rad) du balancement du cap pendant le stationnaire (0,2 rad ≈ 11°).
+const HOVER_WOBBLE_YAW := 0.1
+
+## Vitesse maximale (m/s) pour suivre le point d'ancrage qui oscille.
+## Assez haute pour suivre les dérives, assez basse pour les lisser.
+const HOVER_WOBBLE_SPEED := 0.06
+
+## Durée (s) de montée et de descente de l'amplitude des oscillations,
+## au début et à la fin du stationnaire : pas de démarrage ni d'arrêt brusque.
+const HOVER_WOBBLE_FADE := 0.4
 
 ## Avance du point visé quand une direction d'arrivée est imposée : il est placé
 ## en amont de la cible, à distance × APPROACH_LEAD. Il se rapproche de la cible
@@ -107,6 +123,20 @@ var _final_start_dist := 1.0
 
 ## Temps d'arrêt restant (s) avant le contact.
 var _hover_left := 0.0
+
+## Point de stationnaire, autour duquel l'abeille oscille.
+var _hover_anchor := Vector3.ZERO
+
+## Temps écoulé (s) depuis le début du stationnaire.
+var _hover_t := 0.0
+
+## Phases aléatoires des oscillations : deux abeilles ne bougent pas en même temps.
+var _hover_phase := Vector3.ZERO
+
+## Sens d'arrivée sur la surface (unitaire, dans son plan), fixé au début de
+## l'approche finale. Sert à placer la tête sur la cible et à garder le cap
+## jusqu'à la pose.
+var _arrival_dir := Vector3.ZERO
 
 # =============================================================================
 # Décollage
@@ -173,20 +203,22 @@ func update_takeoff(toward: Vector3, delta: float) -> bool:
 ## (SCOUT : la fleur visée s'est vidée et une autre est choisie).
 func reset_landing() -> void:
 	_landing = Landing.APPROACH
+	_arrival_dir = Vector3.ZERO
 
 ## true dès que l'approche finale a commencé. Permet à GO de renoncer à une fleur
 ## vide en la voyant de près, sans s'y poser.
 func is_on_final_approach() -> bool:
 	return _landing != Landing.APPROACH
 
-## Approche puis pose sur [param target], point d'une surface de normale
-## [param normal] (unitaire). Renvoie true une fois posée.
-## [param max_speed] est transmis à fly_towards() : 0 = fly_speed.
-## [param approach_dir] : direction (horizontale, unitaire) dans laquelle l'abeille doit
-## se déplacer en se posant, et donc regarder une fois posée. Planche d'envol : vers
-## l'entrée. Vector3.ZERO (fleurs) : arrivée libre, face à la direction de vol.
+## [param head_offset] : distance tête-centre (Bee.get_head_offset()). Si non nulle,
+## c'est la tête qui arrive sur [param target], et non le centre du corps (fleurs).
 func update_landing(target: Vector3, normal: Vector3, hover_time: float,
-		delta: float, max_speed := 0.0, approach_dir := Vector3.ZERO) -> bool:
+		delta: float, max_speed := 0.0, approach_dir := Vector3.ZERO,
+		head_offset := 0.0) -> bool:
+	# Dès l'approche finale, le centre vise un point en arrière de la cible,
+	# dans le sens d'arrivée : la tête finit sur la cible
+	if head_offset > 0.0 and _landing != Landing.APPROACH:
+		target -= _arrival_dir * head_offset
 	var dist := bee.global_position.distance_to(target)
 	# Décalage en amont de la cible, le long de l'axe d'arrivée (nul sans direction imposée)
 	var lead := -approach_dir * (dist * APPROACH_LEAD)
@@ -200,6 +232,11 @@ func update_landing(target: Vector3, normal: Vector3, hover_time: float,
 					and _in_approach_cone(target, dist, approach_dir):
 				_landing = Landing.FINAL
 				_final_start_dist = maxf(dist, 0.001)
+				# Sens d'arrivée figé : de l'abeille vers la cible, dans le plan de la surface
+				_arrival_dir = (target - bee.global_position).slide(normal)
+				if _arrival_dir.is_zero_approx():
+					_arrival_dir = _forward_on(normal)
+				_arrival_dir = _arrival_dir.normalized()
 				# Pattes sorties pendant toute l'approche finale : animation visible.
 				# Non bouclée, elle reste sur sa dernière pose jusqu'au contact.
 				bee.play_animation(&"_bee_landing")
@@ -232,15 +269,29 @@ func update_landing(target: Vector3, normal: Vector3, hover_time: float,
 			bee.set_flight_speed(speed)
 
 			if bee.global_position.distance_to(target) <= HOVER_HEIGHT:
-				_hover_left = hover_time
-				# Sans arrêt prévu, on enchaîne directement sur la mise en contact :
-				# FINAL est déjà à TOUCHDOWN_SPEED à cette distance, la vitesse ne change pas
+				_hover_left = randf_range(hover_time * 0.3, hover_time)
+				# Point d'ancrage et phases propres à ce stationnaire
+				_hover_anchor = bee.global_position
+				_hover_t = 0.0
+				_hover_phase = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
 				_landing = Landing.HOVER if hover_time > 0.0 else Landing.TOUCHDOWN
 
 		Landing.HOVER:
-			# Bref arrêt juste au-dessus de la surface, en finissant de s'aligner dessus
-			bee.hop_towards(bee.global_position, 0.0, _landing_facing(normal, approach_dir), normal, delta)
+			# Stationnaire « vivant » : petites dérives autour du point d'ancrage
+			# et balancement du cap, en finissant de s'aligner sur la surface
+			_hover_t += delta
 			_hover_left -= delta
+			# Enveloppe 0 → 1 → 0 : montée en début de stationnaire, descente avant
+			# la pose. Plafonnée à la moitié de la durée, pour que les deux
+			# rampes ne se chevauchent pas sur un stationnaire court.
+			var fade := minf(HOVER_WOBBLE_FADE, (_hover_t + _hover_left) * 0.5)
+			var envelope := smoothstep(0.0, fade, _hover_t) \
+					* smoothstep(0.0, fade, _hover_left)
+			var aim := _hover_anchor + _hover_wobble(normal) * envelope
+			var yaw := HOVER_WOBBLE_YAW * envelope \
+					* _wobble(_hover_t, 0.7, 1.6, _hover_phase.x)
+			var facing := _landing_facing(normal, approach_dir).rotated(normal, yaw)
+			bee.hop_towards(aim, HOVER_WOBBLE_SPEED, facing, normal, delta)
 			if _hover_left <= 0.0:
 				_landing = Landing.TOUCHDOWN
 
@@ -266,14 +317,36 @@ func _forward_on(normal: Vector3) -> Vector3:
 		forward = bee.global_basis.y.slide(normal)
 	return forward
 
-## Regard de l'abeille dans les derniers millimètres : direction d'arrivée imposée,
-## projetée sur la surface, ou à défaut son cap actuel.
+## Regard de l'abeille dans les derniers millimètres : direction d'arrivée imposée
+## (planche), sinon sens d'arrivée figé en début d'approche finale (fleurs),
+## projetés sur la surface ; à défaut, son cap actuel.
 func _landing_facing(normal: Vector3, approach_dir: Vector3) -> Vector3:
-	if approach_dir != Vector3.ZERO:
-		var facing := approach_dir.slide(normal)
+	var dir := approach_dir if approach_dir != Vector3.ZERO else _arrival_dir
+	if dir != Vector3.ZERO:
+		var facing := dir.slide(normal)
 		if not facing.is_zero_approx():
 			return facing
 	return _forward_on(normal)
+	
+## Décalage du point de stationnaire à l'instant _hover_t : dérive dans le plan
+## de la surface (deux axes) et selon sa normale.
+func _hover_wobble(normal: Vector3) -> Vector3:
+	# Repère du plan de la surface. Axe de secours si la normale est proche de X.
+	var t1 := normal.cross(Vector3.RIGHT)
+	if t1.length_squared() < 0.01:
+		t1 = normal.cross(Vector3.FORWARD)
+	t1 = t1.normalized()
+	var t2 := normal.cross(t1)
+
+	return t1 * HOVER_WOBBLE_LATERAL * _wobble(_hover_t, 1.3, 2.9, _hover_phase.x) \
+		+ t2 * HOVER_WOBBLE_LATERAL * _wobble(_hover_t, 1.1, 2.3, _hover_phase.y) \
+		+ normal * HOVER_WOBBLE_VERTICAL * _wobble(_hover_t, 1.7, 3.7, _hover_phase.z)
+
+## Oscillation irrégulière entre -1 et 1 : somme de deux sinusoïdes de fréquences
+## [param f1] et [param f2] (Hz) non multiples l'une de l'autre, déphasées de
+## [param phase]. Le mouvement ne se répète pas de façon visible.
+static func _wobble(t: float, f1: float, f2: float, phase: float) -> float:
+	return 0.6 * sin(TAU * f1 * t + phase) + 0.4 * sin(TAU * f2 * t + phase * 1.7)
 
 ## true si l'abeille arrive dans le cône d'arrivée, ou si aucune direction n'est imposée.
 ## Compare la direction abeille → cible à approach_dir, à plat (seul le cap compte,

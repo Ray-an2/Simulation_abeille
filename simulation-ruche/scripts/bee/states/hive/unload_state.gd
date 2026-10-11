@@ -78,9 +78,12 @@ func update(delta: float) -> BeeState:
 		if dance_quality >= sim.profitability_high:
 			bee.known_profitability = dance_quality   # DANCE : durée proportionnelle
 			return bee.dance
-		return bee.go   # trop de monde à la ruche : elle repart sans danser
+		# Trop de monde à la ruche : elle repart sans danser.
+		# Sortie à pied jusqu'à la planche, puis vol vers la source.
+		return bee.leave_hive.then(bee.go)
 	if verdict == 0:
-		return bee.go
+		# Source moyenne : elle y retourne sans danser, en passant par la planche
+		return bee.leave_hive.then(bee.go)
 
 	# Source mauvaise ou vide : l'abeille l'oublie
 	bee.known_flower = null

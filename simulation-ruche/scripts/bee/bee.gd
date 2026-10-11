@@ -88,12 +88,14 @@ var simulation: Simulation
 ## Marqueur de la caméra embarquée, enfant de Bee.
 @onready var _camera_anchor: Marker3D = $CameraAnchor
 
+## Repère des pièces buccales : c'est ce point qui doit arriver sur le pistil.
+@onready var _head: Marker3D = %HeadMarker
+
 ## Lecteur d'animations du modèle glTF (hover, idle, take_off_and_land).
 @onready var _anim: AnimationPlayer = $Model/AnimationPlayer
 
 ## Bourdonnement individuel, audible uniquement en vol.
 @onready var _buzz: AudioStreamPlayer3D = $Buzz
-
 # =============================================================================
 # Données partagées entre les états
 # =============================================================================
@@ -185,6 +187,9 @@ var go: GoState
 ## Butine une source
 var forage: ForageState
 
+## Danse frétillante : annonce la source à la ruche (recrutement).
+var dance: DanceState
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
@@ -204,6 +209,7 @@ func _ready() -> void:
 	unload = UnloadState.new(self)
 	go = GoState.new(self)
 	forage = ForageState.new(self)
+	dance = DanceState.new(self)
 	
 	_model_base_basis = _model.transform.basis
 	_camera_anchor_base_basis = _camera_anchor.transform.basis
@@ -504,6 +510,11 @@ func land() -> void:
 ## et aucun vol n'a repris depuis. FieldState s'en sert pour décider d'un décollage.
 func is_landed() -> bool:
 	return is_zero_approx(_flight_speed)
+
+## Distance (m) du centre de l'abeille à sa tête, le long de son axe avant (+Z).
+## Mesurée sur le marqueur : suit automatiquement l'échelle du modèle.
+func get_head_offset() -> float:
+	return (_head.global_position - global_position).dot(global_basis.z.normalized())
 	
 # =============================================================================
 # Animation (appelé par les états)

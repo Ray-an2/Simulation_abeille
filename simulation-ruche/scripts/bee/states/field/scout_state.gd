@@ -98,7 +98,7 @@ func update(delta: float) -> BeeState:
 	if _flower != null:
 		# Approche, stationnaire puis pose, à vitesse de recherche
 		if update_landing(_target, _flower.get_landing_normal(), HOVER_TIME_FLOWER,
-				delta, bee.simulation.scout_speed):
+				delta, bee.simulation.scout_speed, Vector3.ZERO, bee.get_head_offset()):
 			bee.known_flower = _flower
 			return bee.forage
 	else:
