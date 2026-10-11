@@ -23,6 +23,9 @@ const MAX_TURN_RATE := 3.0
 ## 0.8 correspond à une voisine à moins de 20 % de AVOID_RADIUS : quasi superposée.
 const PUSH_THRESHOLD := 0.8
 
+## Une abeille en pause ne vérifie la bousculade que toutes les N frames physiques.
+const PUSH_CHECK_STEP := 4
+
 # =============================================================================
 # État interne
 # =============================================================================
@@ -33,6 +36,10 @@ var _walking := false
 ## Temps restant (s) dans la phase en cours (marche ou pause).
 var _phase_time := 0.0
 
+## Décalage propre à chaque abeille : les tests sont étalés sur les N frames
+## au lieu de tomber tous sur la même.
+var _push_offset := 0
+
 # =============================================================================
 # Méthodes de l'état
 # =============================================================================
@@ -41,6 +48,7 @@ func enter() -> void:
 	# Commence par une pause de durée aléatoire : évite que toutes les abeilles
 	# démarrent en même temps au lancement de la simulation
 	_start_pause(randf_range(0.0, PAUSE_MAX))
+	_push_offset = randi() % PUSH_CHECK_STEP
 
 func update(delta: float) -> BeeState:
 	# TODO : détecter une danse à proximité (→ WATCH)
@@ -69,7 +77,8 @@ func update(delta: float) -> BeeState:
 ## Fait progresser la phase en cours et bascule entre marche et pause à son terme.
 ## Une abeille en pause bousculée par une voisine repart pour s'écarter.
 func _update_phase(delta: float) -> void:
-	if not _walking:
+		# En pause, test de bousculade une frame sur PUSH_CHECK_STEP seulement
+	if not _walking and (Engine.get_physics_frames() + _push_offset) % PUSH_CHECK_STEP == 0:
 		# Sans cap fourni : en pause, l'abeille réagit aux voisines de tous les côtés
 		var away := bee.walker.get_avoidance()
 		if away.length() > PUSH_THRESHOLD:

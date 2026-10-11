@@ -32,6 +32,10 @@ func update(_delta: float) -> BeeState:
 		var capacity := bee.simulation.forage_capacity
 		bee.nectar += minf(bee.simulation.harvest_amount, capacity - bee.nectar)
 		bee.update_pollen()
+		# Jabot plein : retour à la ruche. La fleur garde du stock
+		# pour les autres butineuses et pour un prochain trajet.
+		if bee.nectar >= capacity:
+			return bee.return_home
  
 	# Fleur vide -> Etat RETURN
 	if _flower.is_empty(): return bee.return_home

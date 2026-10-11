@@ -35,6 +35,11 @@ const AVOID_TURN_RATE := 6.0
 ## l'abeille freine en plus de tourner, comme derrière une abeille plus lente.
 const AVOID_BRAKE := 0.7
 
+## Le voisinage n'est recalculé qu'une frame physique sur AVOID_CHECK_STEP ;
+## entre deux calculs, la dernière répulsion est réutilisée. À 2, l'abeille réagit
+## avec au plus une frame de retard (17 ms à 60 Hz), sans effet visible.
+const AVOID_CHECK_STEP := 2
+
 # =============================================================================
 # Types
 # =============================================================================
@@ -66,12 +71,19 @@ var _last_turn_sign := 1.0
 ## Surface parcourue actuellement. Fixée par reset().
 var surface := Surface.COMB
 
+## Dernière répulsion calculée par _avoid_neighbours(), réutilisée entre deux calculs.
+var _cached_away := Vector3.ZERO
+
+## Frame physique du dernier calcul de répulsion.
+var _avoid_frame := 0
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
 
 func _init(owner_bee: Bee) -> void:
 	bee = owner_bee
+	_schedule_avoidance()
 
 ## Réinitialise le walker sur [param new_surface] : immobile, cap = avant de l'abeille (+Z)
 ## projeté sur la surface. Appelé à l'arrivée sur le cadre (apparition, retour)
@@ -85,6 +97,8 @@ func reset(new_surface: Surface = Surface.COMB) -> void:
 	# on prend son axe latéral comme cap arbitraire
 	if heading.is_zero_approx():
 		heading = bee.global_basis.x.slide(normal).normalized()
+	
+	_schedule_avoidance()
 
 ## Normale de la surface parcourue : vecteur haut de l'abeille et axe de ses virages.
 func get_normal() -> Vector3:
@@ -185,7 +199,12 @@ func get_avoidance(forward: Vector3 = Vector3.ZERO) -> Vector3:
 ## Fait tourner le cap pour contourner les voisines situées devant.
 ## Renvoie le facteur de freinage à appliquer (1 = aucune voisine, plus petit si proche).
 func _avoid_neighbours(normal: Vector3, delta: float) -> float:
-	var away := get_avoidance(heading)
+	# Recalcul seulement si le dernier date d'au moins AVOID_CHECK_STEP frames
+	var frame := Engine.get_physics_frames()
+	if frame - _avoid_frame >= AVOID_CHECK_STEP:
+		_cached_away = get_avoidance(heading)
+		_avoid_frame = frame
+	var away := _cached_away
 	if away == Vector3.ZERO:
 		return 1.0
 	var urgency := minf(away.length(), 1.0)
@@ -225,3 +244,10 @@ func _keep_between_walls(delta: float, steer_from_edges: bool) -> Vector3:
 	if steer_from_edges and not ahead.is_equal_approx(clamped):
 		steer_towards(clamped, EDGE_TURN_RATE, delta)
 	return clamped
+
+## Force un calcul de répulsion dans les toutes prochaines frames, à une frame tirée
+## au hasard. Les abeilles réinitialisées ensemble (apparition au lancement)
+## ne calculent donc pas toutes sur la même frame.
+func _schedule_avoidance() -> void:
+	_cached_away = Vector3.ZERO
+	_avoid_frame = Engine.get_physics_frames() - AVOID_CHECK_STEP + randi() % AVOID_CHECK_STEP
