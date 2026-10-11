@@ -1,9 +1,10 @@
 class_name BeeOverlay extends Control
 ## Surcouche 2D au-dessus du rendu 3D : un marqueur à l'écran pour chaque abeille,
-## et une infobulle avec ses données pour l'abeille survolée ou épinglée.
+## une infobulle avec ses données pour l'abeille survolée ou épinglée, et en vue
+## abeille un panneau fixe avec les données de l'abeille suivie.
 ##
 ## M : afficher / masquer les marqueurs.
-## I : activer / désactiver les infobulles.
+## I : activer / désactiver les infobulles et le panneau de la vue abeille.
 ## Clic gauche (infobulles actives) : épingler l'abeille sous le curseur, ou désépingler.
 ##
 ## À placer sous un CanvasLayer dont le layer est supérieur à celui du filtre
@@ -28,6 +29,9 @@ const STATE_COLORS := {
 
 ## Couleur des états absents de STATE_COLORS : repère visuel d'un état oublié.
 const UNKNOWN_STATE_COLOR := Color.MAGENTA
+
+## Fond des cadres de texte (infobulle et panneau de la vue abeille).
+const BOX_COLOR := Color(0.0, 0.0, 0.0, 0.75)
 
 # =============================================================================
 # Paramètres réglables
@@ -65,8 +69,16 @@ const UNKNOWN_STATE_COLOR := Color.MAGENTA
 ## Taille de police (px) du texte de l'infobulle.
 @export var font_size := 14
 
-## Marge intérieure (px) de l'infobulle.
+## Marge intérieure (px) des cadres de texte.
 @export var padding := 6.0
+
+@export_group("Vue abeille")
+
+## Taille de police (px) du panneau de l'abeille suivie.
+@export var hud_font_size := 16
+
+## Distance (px) entre le panneau et le coin haut gauche de l'écran.
+@export var hud_margin := 12.0
 
 @export_group("Touches")
 
@@ -74,8 +86,16 @@ const UNKNOWN_STATE_COLOR := Color.MAGENTA
 ## selon la disposition du clavier : M est bien la touche M en AZERTY.
 @export var markers_key: Key = KEY_M
 
-## Touche qui active / désactive les infobulles.
+## Touche qui active / désactive les infobulles et le panneau de la vue abeille.
 @export var info_key: Key = KEY_I
+
+# =============================================================================
+# Liens avec CameraSwitcher
+# =============================================================================
+
+## Abeille suivie par la caméra en vue abeille, null dans les vues fixes.
+## Renseignée par CameraSwitcher à chaque changement de vue ou d'abeille.
+var followed_bee: Bee = null
 
 # =============================================================================
 # État interne
@@ -83,7 +103,7 @@ const UNKNOWN_STATE_COLOR := Color.MAGENTA
 
 ## Marqueurs et infobulles masqués au lancement : on les active avec les touches.
 var _markers_enabled := false
-var _info_enabled := false
+var _info_enabled := true
 
 ## Abeille épinglée par un clic : son infobulle reste affichée même sans survol.
 var _pinned: Bee = null
@@ -142,6 +162,39 @@ func _unhandled_input(event: InputEvent) -> void:
 		queue_redraw()
 
 # =============================================================================
+# Sélection (aussi utilisée par CameraSwitcher)
+# =============================================================================
+
+## Abeille épinglée par un clic, ou null. Permet à CameraSwitcher de passer
+## en vue abeille directement sur l'abeille choisie.
+func get_pinned_bee() -> Bee:
+	return _pinned if is_instance_valid(_pinned) else null
+
+
+## Épingle [param bee], ou désépingle avec null. Utilisé par CameraSwitcher
+## pour que l'épingle suive l'abeille quand on change d'abeille avec Tab.
+func set_pinned_bee(bee: Bee) -> void:
+	_pinned = bee
+	queue_redraw()
+
+
+## Abeille sous [param pos], ou null. Une abeille est touchée si [param pos] est
+## à moins de pick_radius de son centre, ou à l'intérieur de sa silhouette si elle est
+## plus grande à l'écran. Si plusieurs se chevauchent, on garde la plus centrée.
+## Se base sur les positions calculées à la dernière image.
+func _bee_at(pos: Vector2) -> Bee:
+	var best: Bee = null
+	var best_ratio := 1.0
+	for bee in _screen_positions:
+		var reach := maxf(pick_radius, _screen_radii[bee])
+		# Distance rapportée à la taille : 0 au centre, 1 au bord de la zone cliquable
+		var ratio := pos.distance_to(_screen_positions[bee]) / reach
+		if ratio < best_ratio:
+			best = bee
+			best_ratio = ratio
+	return best
+
+# =============================================================================
 # Dessin
 # =============================================================================
 
@@ -187,14 +240,22 @@ func _draw() -> void:
 		draw_circle(p, marker_radius + outline_width, Color(0.0, 0.0, 0.0, alpha))
 		draw_circle(p, marker_radius, color)
 
-	# --- Infobulle ---
 	if not _info_enabled:
 		return
+
+	# --- Panneau de l'abeille suivie (vue abeille uniquement) ---
+	var followed: Bee = followed_bee if is_instance_valid(followed_bee) else null
+	if followed != null:
+		_draw_box("Abeille suivie\n" + _bee_info(followed),
+				Vector2(hud_margin, hud_margin), hud_font_size)
+
+	# --- Infobulle ---
 	# Abeille épinglée en priorité, sinon celle survolée par la souris
 	var shown: Bee = _pinned if is_instance_valid(_pinned) \
 			else _bee_at(get_local_mouse_position())
+	# Pas d'infobulle pour l'abeille suivie : le panneau affiche déjà ses données.
 	# Abeille épinglée hors champ : pas d'infobulle, elle revient quand l'abeille réapparaît
-	if shown == null or not _screen_positions.has(shown):
+	if shown == null or shown == followed or not _screen_positions.has(shown):
 		return
 	var at := _screen_positions[shown]
 	# L'anneau entoure le marqueur de loin, l'abeille entière de près
@@ -203,44 +264,32 @@ func _draw() -> void:
 	_draw_tooltip(shown, at, ring)
 
 
-## Dessine un cadre semi-transparent contenant les données de [param bee],
-## à droite de l'anneau de rayon [param ring], sans sortir de l'écran.
+## Dessine l'infobulle de [param bee] à droite de l'anneau de rayon [param ring],
+## sans sortir de l'écran.
 func _draw_tooltip(bee: Bee, at: Vector2, ring: float) -> void:
-	var font := get_theme_default_font()
 	var text := _bee_info(bee)
-	var text_size := font.get_multiline_string_size(
-			text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	var box_size := text_size + Vector2.ONE * 2.0 * padding
-
+	var box_size := _box_size(text, font_size)
 	# À droite de l'anneau, centré verticalement, puis ramené dans l'écran
 	var pos := at + Vector2(ring + 6.0, -box_size.y * 0.5)
 	pos.x = clampf(pos.x, 0.0, size.x - box_size.x)
 	pos.y = clampf(pos.y, 0.0, size.y - box_size.y)
+	_draw_box(text, pos, font_size)
 
-	draw_rect(Rect2(pos, box_size), Color(0.0, 0.0, 0.0, 0.75))
+
+## Taille (px) du cadre nécessaire pour afficher [param text], marges comprises.
+func _box_size(text: String, fsize: int) -> Vector2:
+	var text_size := get_theme_default_font().get_multiline_string_size(
+			text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
+	return text_size + Vector2.ONE * 2.0 * padding
+
+
+## Dessine un cadre semi-transparent contenant [param text], coin haut gauche en [param pos].
+func _draw_box(text: String, pos: Vector2, fsize: int) -> void:
+	var font := get_theme_default_font()
+	draw_rect(Rect2(pos, _box_size(text, fsize)), BOX_COLOR)
 	# draw_multiline_string place la ligne de base de la première ligne en pos : on ajoute l'ascendante
-	var baseline := pos + Vector2(padding, padding + font.get_ascent(font_size))
-	draw_multiline_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-
-# =============================================================================
-# Sélection
-# =============================================================================
-
-## Abeille sous [param pos], ou null. Une abeille est touchée si [param pos] est
-## à moins de pick_radius de son centre, ou à l'intérieur de sa silhouette si elle est
-## plus grande à l'écran. Si plusieurs se chevauchent, on garde la plus centrée.
-## Se base sur les positions calculées à la dernière image.
-func _bee_at(pos: Vector2) -> Bee:
-	var best: Bee = null
-	var best_ratio := 1.0
-	for bee in _screen_positions:
-		var reach := maxf(pick_radius, _screen_radii[bee])
-		# Distance rapportée à la taille : 0 au centre, 1 au bord de la zone cliquable
-		var ratio := pos.distance_to(_screen_positions[bee]) / reach
-		if ratio < best_ratio:
-			best = bee
-			best_ratio = ratio
-	return best
+	var baseline := pos + Vector2(padding, padding + font.get_ascent(fsize))
+	draw_multiline_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
 
 # =============================================================================
 # Données affichées
@@ -261,7 +310,7 @@ func _state_name(bee: Bee) -> StringName:
 	return bee.current_state.get_script().get_global_name()
 
 
-## Texte de l'infobulle : une ligne par donnée utile au réglage des boucles.
+## Texte affiché pour une abeille : une ligne par donnée utile au réglage des boucles.
 func _bee_info(bee: Bee) -> String:
 	var lines := PackedStringArray()
 	lines.append(str(bee.name))
