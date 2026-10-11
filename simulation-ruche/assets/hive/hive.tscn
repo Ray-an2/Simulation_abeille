@@ -17,11 +17,11 @@ script = ExtResource("1_1hcnt")
 
 [node name="LandingMarker" type="Marker3D" parent="." unique_id=1713528870]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0602156, -0.27811)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.055, -0.278)
 
 [node name="EntranceMarker" type="Marker3D" parent="." unique_id=2038964992]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000862888, 0.060699854, -0.237784)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.001, 0.055, -0.238)
 
 [node name="DanceMarker" type="Marker3D" parent="." unique_id=362317231]
 unique_name_in_owner = true
