@@ -36,6 +36,19 @@ const BANK_SMOOTHING := 8.0
 ## 1 = vue solidaire du corps). La tête compense une partie du roulis.
 const CAMERA_BANK_FACTOR := 0.5
 
+## Distance (m) caméra–abeille en dessous de laquelle l'animation est mise à jour
+## à chaque frame (vue abeille, gros plan sur le cadre).
+const ANIM_NEAR := 0.5
+
+## Au-delà de ANIM_NEAR : une mise à jour de l'animation toutes les N frames.
+const ANIM_FAR_STEP := 4
+
+## Temps accumulé depuis la dernière mise à jour de l'animation.
+var _anim_accum := 0.0
+
+## Décalage propre à chaque abeille : elles ne sont pas toutes mises à jour à la même frame.
+var _anim_offset := 0
+
 # =============================================================================
 # Pelotes de pollen (indicateur visuel de charge)
 # =============================================================================
@@ -198,6 +211,10 @@ func _ready() -> void:
 	# et des ailes entre takeoff, hover et landing. Réglé ici plutôt que dans
 	# l'inspecteur, car l'AnimationPlayer fait partie du modèle importé.
 	_anim.playback_default_blend_time = 0.25
+	
+	# L'animation n'avance plus toute seule : _process() l'avance, plus ou moins souvent
+	_anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	_anim_offset = randi() % ANIM_FAR_STEP
 	
 	_avoid_side = 1.0 if randf() < 0.5 else -1.0
 	
@@ -490,6 +507,20 @@ func update_pollen() -> void:
 			p.scale = Vector3.ONE * POLLEN_MIN_SCALE * 0.5
 			p.visible = true
 		_pollen_tween.tween_property(p, "scale", target, POLLEN_GROW_TIME)
+	
+## Avance l'animation à chaque frame près de la caméra, toutes les ANIM_FAR_STEP frames
+## au-delà. Le temps accumulé est rattrapé d'un coup : la vitesse reste juste,
+## seule la fluidité baisse, ce qui ne se voit pas de loin.
+func _process(delta: float) -> void:
+	_anim_accum += delta
+	var step := 1
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and cam.global_position.distance_squared_to(global_position) > ANIM_NEAR * ANIM_NEAR:
+		step = ANIM_FAR_STEP
+	if (Engine.get_process_frames() + _anim_offset) % step != 0:
+		return
+	_anim.advance(_anim_accum)
+	_anim_accum = 0.0
 	
 # =============================================================================
 # Utilitaires internes

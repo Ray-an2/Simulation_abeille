@@ -340,15 +340,22 @@ func clear_spawn_positions() -> void:
 # =============================================================================
 
 ## Abeilles de la ruche à moins de [param radius] de [param pos], sans [param exclude].
-## Parcours complet de la liste : suffisant pour 200 abeilles, à remplacer par une
-## grille spatiale si le profileur montre que ça coûte trop cher.
+## Ne parcourt que les 27 cellules voisines au lieu de toute la colonie.
 func get_comb_bees_near(pos: Vector3, radius: float, exclude: Bee = null) -> Array[Bee]:
+	assert(radius <= GRID_CELL, "Hive : rayon de recherche supérieur à GRID_CELL")
+	_update_grid()
 	var result: Array[Bee] = []
-	# Comparaison des carrés : évite une racine carrée par abeille
 	var r2 := radius * radius
-	for other in _comb_bees:
-		if other != exclude and other.global_position.distance_squared_to(pos) < r2:
-			result.append(other)
+	var center := _cell_of(pos)
+	for x in range(-1, 2):
+		for y in range(-1, 2):
+			for z in range(-1, 2):
+				var cell = _grid.get(center + Vector3i(x, y, z))
+				if cell == null:
+					continue
+				for other: Bee in cell:
+					if other != exclude and other.global_position.distance_squared_to(pos) < r2:
+						result.append(other)
 	return result
 
 ## Point tiré au hasard dans la zone de déambulation du cadre.
@@ -397,6 +404,41 @@ func bee_entered(bee: Bee) -> void:
 ## Retire [param bee] de la ruche (départ en vol ou suppression).
 func bee_left(bee: Bee) -> void:
 	_comb_bees.erase(bee)
+
+# =============================================================================
+# Grille spatiale (évitement)
+# =============================================================================
+
+## Taille (m) d'une cellule. Doit être supérieure ou égale au plus grand rayon passé
+## à get_comb_bees_near() (CombWalker.AVOID_RADIUS) : toute voisine à portée
+## est alors forcément dans l'une des 27 cellules autour de l'abeille.
+const GRID_CELL := 0.015
+
+## Cellule (Vector3i) → abeilles qu'elle contient (Array).
+var _grid: Dictionary = {}
+
+## Frame physique de la dernière reconstruction, pour ne la faire qu'une fois par frame.
+var _grid_frame := -1
+
+## Cellule contenant [param pos].
+func _cell_of(pos: Vector3) -> Vector3i:
+	return Vector3i((pos / GRID_CELL).floor())
+
+## Reconstruit la grille au premier appel de la frame physique.
+## Les abeilles déjà déplacées pendant cette frame sont rangées avec leur nouvelle
+## position : décalage de quelques dixièmes de mm, sans effet visible sur l'évitement.
+func _update_grid() -> void:
+	var frame := Engine.get_physics_frames()
+	if frame == _grid_frame:
+		return
+	_grid_frame = frame
+	_grid.clear()
+	for b in _comb_bees:
+		var key := _cell_of(b.global_position)
+		if _grid.has(key):
+			_grid[key].append(b)
+		else:
+			_grid[key] = [b]
 	
 # =============================================================================
 # Son
