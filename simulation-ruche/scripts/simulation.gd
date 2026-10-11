@@ -77,7 +77,7 @@ class_name Simulation extends Node3D
 @export_group("Butinage")
 
 ## Quantité de nectar qu'une abeille peut transporter. FORAGE s'arrête une fois atteinte.
-@export var forage_capacity: float = 10.0
+@export var forage_capacity: float = 30.0
 
 ## Durée minimale (s) de butinage sur une fleur.
 @export var foraging_time_min := 4.0
@@ -102,6 +102,19 @@ class_name Simulation extends Node3D
 ## Rentabilité en dessous de laquelle l'abeille abandonne la source (retour en IDLE).
 ## Entre les deux seuils, elle repart sans danser.
 @export_range(0.0, 1.0) var profitability_low: float = 0.2
+
+## Distance (m) à laquelle une abeille en IDLE remarque une danseuse.
+## Mesure : 90 % des suiveuses sont attirées à moins de 27 mm (cellules ouvertes).
+@export var follow_radius: float = 0.027
+
+## Probabilité par seconde qu'une abeille en IDLE se mette à suivre
+## une danseuse à portée. Valeur de réglage, non mesurée.
+@export var p_follow: float = 0.5
+
+## Nombre maximal de suiveuses par danseuse. Les suiveuses se tiennent à moins
+## d'une longueur d'abeille de la danseuse : peu de places autour d'elle.
+## Valeur estimée, non mesurée.
+@export_range(1, 12) var max_followers: int = 6
 
 
 @export_group("Déplacement")

@@ -403,6 +403,7 @@ func start_dance(bee: Bee, flower: Flower) -> void:
 ## Retire la danse de [param bee]. Sans effet si elle ne dansait pas.
 func stop_dance(bee: Bee) -> void:
 	_dances.erase(bee)
+	_followers.erase(bee)
 
 ## true tant que [param bee] danse. Sert à WATCH : une danse finie avant
 ## watch_min_duration renvoie la suiveuse en IDLE.
@@ -417,6 +418,26 @@ func get_dance_flower(bee: Bee) -> Flower:
 ## Nombre de danses en cours (statistiques, interface).
 func get_dance_count() -> int:
 	return _dances.size()
+
+## Nombre de suiveuses par danseuse. Tenu à jour par WatchState (enter / exit).
+var _followers: Dictionary[Bee, int] = {}
+
+## Une suiveuse de plus pour [param dancer].
+func add_follower(dancer: Bee) -> void:
+	_followers[dancer] = _followers.get(dancer, 0) + 1
+
+## Une suiveuse de moins pour [param dancer]. Sans effet si la danse est finie
+## (stop_dance a déjà vidé le compteur).
+func remove_follower(dancer: Bee) -> void:
+	if not _followers.has(dancer):
+		return
+	_followers[dancer] -= 1
+	if _followers[dancer] <= 0:
+		_followers.erase(dancer)
+
+## Nombre de suiveuses de [param dancer].
+func get_follower_count(dancer: Bee) -> int:
+	return _followers.get(dancer, 0)
 
 ## Danseuses à moins de [param radius] de [param pos].
 ## Peu de danseuses à la fois : un simple parcours suffit, sans grille.

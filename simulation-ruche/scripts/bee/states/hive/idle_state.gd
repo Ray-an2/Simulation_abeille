@@ -26,6 +26,9 @@ const PUSH_THRESHOLD := 0.8
 ## Une abeille en pause ne vérifie la bousculade que toutes les N frames physiques.
 const PUSH_CHECK_STEP := 4
 
+## La recherche de danseuse ne se fait que toutes les N frames physiques.
+const DANCE_CHECK_STEP := 4
+
 # =============================================================================
 # État interne
 # =============================================================================
@@ -51,7 +54,10 @@ func enter() -> void:
 	_push_offset = randi() % PUSH_CHECK_STEP
 
 func update(delta: float) -> BeeState:
-	# TODO : détecter une danse à proximité (→ WATCH)
+		# Danse à portée : l'abeille peut se mettre à la suivre (→ WATCH)
+	var dancer := _find_dancer(delta)
+	if dancer != null:
+		return bee.watch.follow(dancer)
 
 	# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
 	# L'abeille sort d'abord à pied, puis explore une fois dehors.
@@ -105,3 +111,27 @@ func _start_walk() -> void:
 func _start_pause(duration: float) -> void:
 	_walking = false
 	_phase_time = duration
+
+## Renvoie la danseuse la plus proche à portée si l'abeille décide de la suivre,
+## sinon null. Testé une frame sur DANCE_CHECK_STEP, avec le même décalage
+## que la bousculade : les abeilles ne cherchent pas toutes sur la même frame.
+func _find_dancer(delta: float) -> Bee:
+	if (Engine.get_physics_frames() + _push_offset) % DANCE_CHECK_STEP != 0:
+		return null
+	var sim := bee.simulation
+	# Probabilité par seconde, ramenée aux DANCE_CHECK_STEP frames écoulées.
+	# Tirée avant la recherche : la plupart du temps, on évite la requête.
+	if randf() >= sim.p_follow * delta * DANCE_CHECK_STEP:
+		return null
+	# La danse la plus proche : les suiveuses réelles suivent plutôt la plus proche
+	var nearest: Bee = null
+	var best := INF
+	for dancer in bee.hive.get_dancers_near(bee.global_position, sim.follow_radius):
+		# Danseuse déjà entourée : plus de place autour d'elle
+		if bee.hive.get_follower_count(dancer) >= sim.max_followers:
+			continue
+		var d2 := dancer.global_position.distance_squared_to(bee.global_position)
+		if d2 < best:
+			best = d2
+			nearest = dancer
+	return nearest

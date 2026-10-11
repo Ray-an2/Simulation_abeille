@@ -200,6 +200,9 @@ var forage: ForageState
 ## Danse frétillante : annonce la source à la ruche (recrutement).
 var dance: DanceState
 
+## Suit une danseuse pour mémoriser la source annoncée (recrutement).
+var watch: WatchState
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
@@ -220,6 +223,7 @@ func _ready() -> void:
 	go = GoState.new(self)
 	forage = ForageState.new(self)
 	dance = DanceState.new(self)
+	watch = WatchState.new(self)
 	
 	_model_base_basis = _model.transform.basis
 	_camera_anchor_base_basis = _camera_anchor.transform.basis
