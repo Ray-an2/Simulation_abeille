@@ -4,7 +4,6 @@ class_name Simulation extends Node3D
 ## Tous les paramètres sont exportés : on peut les modifier pendant l'exécution
 ## via l'onglet Distant de l'arbre de scène, pour régler les boucles de rétroaction.
 
-
 # ============================================================
 # Paramètres réglables
 # ============================================================
@@ -73,7 +72,6 @@ class_name Simulation extends Node3D
 ## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
 @export var perception_radius: float = 15.0
 
-
 @export_group("Butinage")
 
 ## Quantité de nectar qu'une abeille peut transporter. FORAGE s'arrête une fois atteinte.
@@ -84,7 +82,6 @@ class_name Simulation extends Node3D
 
 ## Durée maximale (s) de butinage sur une fleur.
 @export var foraging_time_max := 5.0
-
 
 @export_group("Danse")
 
