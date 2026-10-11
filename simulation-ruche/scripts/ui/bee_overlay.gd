@@ -96,7 +96,7 @@ var followed_bee: Bee = null
 
 ## Marqueurs et infobulles masqués au lancement : on les active avec les touches.
 var _markers_enabled := false
-var _info_enabled := false
+var _info_enabled := true
 
 ## Abeille épinglée par un clic : son infobulle reste affichée même sans survol.
 var _pinned: Bee = null

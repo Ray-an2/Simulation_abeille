@@ -106,13 +106,26 @@ func update(delta: float) -> BeeState:
 
 	# Source mémorisée : l'abeille la copie et sort la butiner
 	if _contact_time >= bee.simulation.watch_min_duration:
-		bee.known_flower = hive.get_dance_flower(_dancer)
-		# Rentabilité inconnue tant qu'elle n'a pas fait le trajet : UNLOAD l'évaluera
-		bee.known_profitability = 0.0
+		# learn_source() retient aussi la danseuse (chaîne de recrutement) et remet
+		# la rentabilité à zéro : inconnue tant que le trajet n'est pas fait, UNLOAD l'évaluera
+		bee.learn_source(hive.get_dance_flower(_dancer), _dancer)
 		return bee.leave_hive.then(bee.go)
 
 	_move_to_slot(delta)
 	return null
+
+# =============================================================================
+# Lecture (appelé par l'interface)
+# =============================================================================
+
+## Danseuse suivie, ou null hors de l'état.
+func get_dancer() -> Bee:
+	return _dancer if is_instance_valid(_dancer) else null
+
+## Temps (s) passé au contact de la danseuse depuis l'entrée dans l'état.
+## C'est lui, et non le temps passé dans l'état, qui doit atteindre watch_min_duration.
+func get_contact_time() -> float:
+	return _contact_time
 
 # =============================================================================
 # Utilitaires internes

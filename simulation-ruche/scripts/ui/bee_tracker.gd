@@ -1,9 +1,9 @@
 class_name BeeTracker extends Node
 ## Tient pour chaque abeille un historique : temps passé dans l'état, dernières
-## transitions, compteurs de vie, vitesse mesurée et origine de la source connue.
+## transitions, compteurs de vie (dont les abeilles recrutées) et vitesse mesurée.
 ##
 ## Les transitions arrivent par le signal Bee.state_changed, au moment exact où
-## elles ont lieu. Le reste (nectar, source, position) est observé à chaque image
+## elles ont lieu. Le reste (nectar, danseuse, position) est observé à chaque image
 ## physique, en comparant avec l'image précédente.
 
 # =============================================================================
@@ -39,15 +39,15 @@ class Record:
 	## Danses commencées.
 	var dances := 0
 
-	## Comment la source actuelle a été connue : &"scout", &"dance", ou &"" sans source.
-	var source_origin: StringName = &""
+	## Abeilles recrutées par ses danses.
+	var recruits := 0
 
 	## Vitesse mesurée (m/s), lissée.
 	var speed := 0.0
 
 	# Valeurs de l'image précédente, pour détecter les changements
 	var last_nectar := 0.0
-	var last_flower: Flower = null
+	var last_recruiter: Bee = null
 	var last_position := Vector3.ZERO
 
 # =============================================================================
@@ -123,7 +123,7 @@ func _create_record(bee: Bee) -> Record:
 	rec.state_name = state_of(bee)
 	rec.state_since = clock
 	rec.last_nectar = bee.nectar
-	rec.last_flower = bee.known_flower if is_instance_valid(bee.known_flower) else null
+	rec.last_recruiter = bee.recruited_by if is_instance_valid(bee.recruited_by) else null
 	rec.last_position = bee.global_position
 	return rec
 
@@ -149,35 +149,26 @@ func _on_state_changed(bee: Bee, from: BeeState, to: BeeState) -> void:
 			rec.empty_trips += 1
 
 
-## Compare l'abeille à l'image précédente : nectar livré, nouvelle source, vitesse.
+## Compare l'abeille à l'image précédente : nectar livré, recrutement, vitesse.
 func _observe(bee: Bee, rec: Record, delta: float) -> void:
 	# --- Déchargement : seul UNLOAD fait baisser la charge ---
 	if bee.nectar < rec.last_nectar:
 		rec.nectar_delivered += rec.last_nectar - bee.nectar
 	rec.last_nectar = bee.nectar
 
-	# --- Nouvelle source : apprise en suivant une danse, sinon trouvée en exploration ---
-	var flower: Flower = bee.known_flower if is_instance_valid(bee.known_flower) else null
-	if flower != rec.last_flower:
-		if flower == null:
-			rec.source_origin = &""
-		elif _left_watch(rec):
-			rec.source_origin = &"dance"
-		else:
-			rec.source_origin = &"scout"
-		rec.last_flower = flower
+	# --- Recrutement : un point pour la danseuse quand l'abeille en adopte une nouvelle ---
+	# On suit la danseuse et non la fleur : une recrue qui se rabat sur une fleur
+	# voisine change de fleur, mais pas de danseuse, et ne doit pas compter deux fois.
+	var recruiter: Bee = bee.recruited_by if is_instance_valid(bee.recruited_by) else null
+	if recruiter != rec.last_recruiter:
+		if recruiter != null:
+			var dancer_rec: Record = _records.get(recruiter)
+			if dancer_rec != null:
+				dancer_rec.recruits += 1
+		rec.last_recruiter = recruiter
 
 	# --- Vitesse : distance parcourue depuis l'image précédente ---
 	if delta > 0.0:
 		var instant := bee.global_position.distance_to(rec.last_position) / delta
 		rec.speed = lerpf(rec.speed, instant, 1.0 - exp(-SPEED_SMOOTHING * delta))
 	rec.last_position = bee.global_position
-
-
-## true si l'abeille est en WATCH ou vient d'en sortir : une source apparue à ce
-## moment-là a été apprise en suivant une danse. Provisoire : remplacé par
-## Bee.recruited_by avec l'amélioration « chaîne de recrutement ».
-func _left_watch(rec: Record) -> bool:
-	if rec.state_name == &"WatchState":
-		return true
-	return not rec.transitions.is_empty() and rec.transitions[0].from == &"WatchState"

@@ -104,9 +104,15 @@ func update(delta: float) -> BeeState:
 				facing = Vector3.UP
 			bee.hop_towards(_climb_target, CLIMB_SPEED, facing, normal, delta)
 			if bee.is_near(_climb_target, EXACT_RADIUS):
-				# Toujours UNLOAD, même sans nectar : c'est là que la source est évaluée.
-				# Une exploratrice rentrée bredouille en ressort aussitôt vers IDLE.
-				return bee.unload
+				# Avec du nectar : UNLOAD décharge puis évalue la source.
+				if bee.nectar > 0.0:
+					return bee.unload
+				# Rentrée bredouille (exploration sans fleur, fleur réservée, rappel
+				# de nuit…) : rien à décharger ni à évaluer, elle attend sur le cadre.
+				# Le chrono du trajet est remis à zéro ici, puisque _evaluate_source()
+				# (qui le remet normalement à zéro) n'est pas appelée.
+				bee.trip_time = 0.0
+				return bee.idle
 
 	return null
 

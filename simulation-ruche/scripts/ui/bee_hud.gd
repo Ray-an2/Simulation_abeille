@@ -3,8 +3,9 @@ class_name BeeHud extends Control
 ## laisser le centre de la vue libre, et leur contenu dépend de ce que fait l'abeille :
 ##   haut gauche  : identité, état et sa progression, vol, compteurs de vie ;
 ##   haut droit   : heure simulée et journal des dernières transitions ;
-##   bas gauche   : charge transportée et source connue ;
-##   bas droit    : danse qui annoncerait la source, rentabilité et décision prévue ;
+##   bas gauche   : charge transportée, source connue et chaîne de recrutement ;
+##   bas droit    : danse qui annoncerait la source (direction et distance),
+##                  rentabilité et décision prévue ;
 ##   dans la vue  : direction de la ruche et de la source, sur le bord si hors champ.
 ##
 ## S'affiche en vue abeille quand les infobulles de BeeOverlay sont actives (touche I).
@@ -72,6 +73,10 @@ const STATE_LABELS := {
 
 ## Rayon (px) de la boussole de danse.
 @export var compass_radius := 46.0
+
+## Longueur minimale de la flèche de la boussole, en fraction du rayon :
+## une source toute proche reste lisible.
+@export_range(0.0, 1.0) var compass_min_arrow := 0.3
 
 ## Distance (px) entre les indicateurs de cible hors champ et le bord de l'écran.
 @export var edge_inset := 40.0
@@ -161,6 +166,7 @@ func _identity_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 		rows.append(_row_pair("Voyages", trips))
 		rows.append(_row_pair("Nectar livré", "%.0f" % rec.nectar_delivered))
 		rows.append(_row_pair("Danses", str(rec.dances)))
+		rows.append(_row_pair("Abeilles recrutées", str(rec.recruits)))
 	return rows
 
 
@@ -198,14 +204,23 @@ func _state_rows(bee: Bee, state: StringName, in_state: float) -> Array[Dictiona
 			rows.append(_row_text("Envie de danser réduite de %d %%"
 					% roundi(sim.wait_penalty * ratio * 100.0)))
 		&"WatchState":
-			rows.append(_row_gauge("Mémorisation",
-					"%.1f / %.1f s" % [in_state, sim.watch_min_duration],
-					in_state / maxf(sim.watch_min_duration, 0.001), GOOD_COLOR))
+			var dancer := bee.watch.get_dancer()
+			if dancer != null:
+				rows.append(_row_pair("Suit la danse de", str(dancer.name)))
+			# Seul le temps au contact compte : la jauge peut stagner si l'abeille
+			# perd la danseuse, et l'abeille abandonne au bout de LOST_TIMEOUT
+			var contact := bee.watch.get_contact_time()
+			rows.append(_row_gauge("Mémorisation (au contact)",
+					"%.1f / %.1f s" % [contact, sim.watch_min_duration],
+					contact / maxf(sim.watch_min_duration, 0.001), GOOD_COLOR))
 		&"DanceState":
 			# Durée prévue par DanceState : proportionnelle à la rentabilité
 			var total := sim.dance_duration_max * bee.known_profitability
 			rows.append(_row_gauge("Danse", "reste %.1f s" % maxf(total - in_state, 0.0),
 					in_state / maxf(total, 0.001), MID_COLOR))
+			# Boucle de recrutement : abeilles qui suivent cette danse en ce moment
+			rows.append(_row_pair("Suiveuses", "%d / %d"
+					% [bee.hive.get_follower_count(bee), sim.max_followers]))
 	return rows
 
 
@@ -235,7 +250,8 @@ func _journal_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 	return rows
 
 
-## Bas gauche : ce que l'abeille transporte et ce qu'elle sait de sa source.
+## Bas gauche : ce que l'abeille transporte, ce qu'elle sait de sa source
+## et de qui elle la tient.
 func _cargo_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	var sim := bee.simulation
@@ -256,11 +272,14 @@ func _cargo_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 	rows.append(_row_gauge("Stock de la fleur", "%.0f / %.0f" % [flower.resource, sim.max_resource],
 			flower.resource / max_res, flower_color, [sim.threshold / max_res]))
 	rows.append(_row_pair("État de la fleur", _flower_state_label(flower)))
-	rows.append(_row_pair("Distance à la ruche", "%.1f m"
-			% sim.get_flat_distance(bee.hive.global_position, flower.global_position)))
-	if rec != null and rec.source_origin != &"":
-		rows.append(_row_pair("Connue par",
-				"exploration" if rec.source_origin == &"scout" else "une danse"))
+	# Origine de la source : exploration, ou danse (avec la chaîne de recrutement)
+	var chain := _recruitment_chain(bee)
+	if chain.is_empty():
+		rows.append(_row_pair("Connue par", "exploration"))
+	else:
+		rows.append(_row_pair("Connue par", "danse de " + chain[0]))
+		if chain.size() > 1:
+			rows.append(_row_text("Recrutement : " + " ← ".join(chain)))
 	return rows
 
 
@@ -273,11 +292,16 @@ func _dance_rows(bee: Bee) -> Array[Dictionary]:
 		return rows
 	var sim := bee.simulation
 
-	# Angle recalculé à chaque image : le soleil tourne avec l'heure simulée
+	# Angle recalculé à chaque image : le soleil tourne avec l'heure simulée.
+	# Distance à plat ruche → source : celle que la danse encode.
 	var angle := sim.get_dance_angle(flower.global_position, bee.hive.global_position)
+	var dist := sim.get_flat_distance(bee.hive.global_position, flower.global_position)
+	var dist_ratio := clampf(dist / maxf(sim.max_source_distance, 0.001), 0.0, 1.0)
 	rows.append(_row_text("Danse de cette source"))
-	rows.append({"kind": &"compass", "angle": angle, "color": _flower_color(flower)})
+	rows.append({"kind": &"compass", "angle": angle, "color": _flower_color(flower),
+			"distance": dist, "distance_ratio": dist_ratio})
 	rows.append(_row_pair("Angle au soleil", "%+.0f°" % rad_to_deg(angle)))
+	rows.append(_row_pair("Distance", "%.1f m" % dist))
 	rows.append(_row_gap())
 
 	# Rentabilité calculée par UNLOAD au dernier déchargement, comparée aux deux seuils
@@ -454,7 +478,8 @@ func _draw_row(row: Dictionary, at: Vector2, width: float) -> void:
 			var bar := Rect2(at + Vector2(0.0, lh + 1.0), Vector2(width, gauge_height))
 			_draw_gauge(bar, row.ratio, row.color, row.ticks)
 		&"compass":
-			_draw_compass(at + Vector2(width * 0.5, compass_radius + 8.0), row.angle, row.color)
+			_draw_compass(at + Vector2(width * 0.5, compass_radius + 8.0), row.angle, row.color,
+					row.distance, row.distance_ratio)
 
 
 ## Jauge horizontale remplie à [param ratio], avec des repères aux fractions [param ticks].
@@ -470,18 +495,32 @@ func _draw_gauge(rect: Rect2, ratio: float, color: Color, ticks: Array) -> void:
 
 ## Boussole de danse centrée en [param center] : le soleil en haut, comme le haut du
 ## rayon pour une abeille qui danse, et une flèche vers la source à [param angle] du soleil.
-func _draw_compass(center: Vector2, angle: float, color: Color) -> void:
+## La longueur de la flèche suit [param distance_ratio] (distance / max_source_distance),
+## comme la durée de la phase frétillante suit la distance dans une vraie danse.
+## [param distance] (m) est écrite à l'opposé de la flèche, pour ne pas la recouvrir.
+func _draw_compass(center: Vector2, angle: float, color: Color, distance: float,
+		distance_ratio: float) -> void:
 	draw_arc(center, compass_radius, 0.0, TAU, 48, BORDER_COLOR, 1.5)
+	# Cercle intermédiaire : repère de la moitié de max_source_distance
+	draw_arc(center, compass_radius * 0.5, 0.0, TAU, 32, BORDER_COLOR, 1.0)
 	draw_circle(center + Vector2(0.0, -compass_radius), 6.0, SUN_COLOR)
+
 	# get_dance_angle tourne autour de +Y (sens trigonométrique vu du dessus).
 	# À l'écran, l'axe Y descend : le même sens s'obtient avec une rotation négative.
 	# Si la flèche apparaît en miroir de la réalité, inverser le signe.
 	var dir := Vector2.UP.rotated(-angle)
-	var tip := center + dir * (compass_radius - 8.0)
+	var length := (compass_radius - 8.0) * lerpf(compass_min_arrow, 1.0, distance_ratio)
+	var tip := center + dir * length
 	draw_line(center, tip, color, 3.0)
 	var side := dir.orthogonal() * 5.0
 	draw_colored_polygon(PackedVector2Array([tip + dir * 7.0, tip + side, tip - side]), color)
 	draw_circle(center, 3.0, TEXT_COLOR)
+
+	# Distance de l'autre côté du centre, centrée sur son point d'ancrage
+	var text := "%.0f m" % distance
+	var text_size := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var anchor := center - dir * compass_radius * 0.55
+	_text(anchor - Vector2(text_size.x * 0.5, _line_height(font_size) * 0.5), text, TEXT_COLOR)
 
 # =============================================================================
 # Texte
@@ -504,6 +543,25 @@ func _text(pos: Vector2, text: String, color: Color, fsize := -1) -> void:
 func _text_right(pos: Vector2, text: String, color: Color) -> void:
 	var w := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	_text(pos - Vector2(w, 0.0), text, color)
+
+# =============================================================================
+# Recrutement
+# =============================================================================
+
+## Chaîne de recrutement, de la danseuse la plus proche à la plus ancienne.
+## La première est toujours affichée. On ne remonte au-delà que si la danseuse
+## connaît encore la même fleur : sinon elle a changé de source, et son propre
+## recrutement concerne une autre fleur. 4 maillons au plus, ce qui protège aussi
+## d'un cycle (A recrutée par B, recrutée par A).
+func _recruitment_chain(bee: Bee) -> PackedStringArray:
+	var names := PackedStringArray()
+	var dancer := bee.recruited_by
+	while is_instance_valid(dancer) and names.size() < 4:
+		names.append(str(dancer.name))
+		if dancer.known_flower != bee.known_flower:
+			break
+		dancer = dancer.recruited_by
+	return names
 
 # =============================================================================
 # Libellés et couleurs
