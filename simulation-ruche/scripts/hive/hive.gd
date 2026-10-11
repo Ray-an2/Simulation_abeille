@@ -1,5 +1,7 @@
 class_name Hive extends Node3D
-## Ruche : gère les deux ressources partagées entre les abeilles.
+## Ruche d'observation : géométrie où marchent les abeilles (cadre, plancher, tunnel,
+## planche d'envol), présence des abeilles à l'intérieur, danses (boucle positive
+## de recrutement) et file de déchargement (boucle négative de saturation).
 
 # =============================================================================
 # Constantes
@@ -8,11 +10,19 @@ class_name Hive extends Node3D
 ## Nombre de tirages avant d'accepter une position qui ne respecte pas l'espacement.
 const SPAWN_MAX_ATTEMPTS := 5
 
+## Taille (m) d'une cellule de la grille d'évitement. Doit être supérieure ou égale
+## au plus grand rayon passé à get_comb_bees_near() (CombWalker.AVOID_RADIUS) :
+## toute voisine à portée est alors forcément dans l'une des 27 cellules autour de l'abeille.
+const GRID_CELL := 0.015
+
+## Volume (dB) du bourdonnement quand la ruche est vide : -80 dB est inaudible.
+const SILENT_DB := -80.0
+
 # =============================================================================
 # Paramètres réglables
 # =============================================================================
 
-@export_group("Apparition")
+@export_group("Cadre")
 
 ## Nœud du modèle contenant la surface où marchent les abeilles (partie cire du cadre).
 @export var comb_node_name: StringName = &"Frame-1"
@@ -20,14 +30,18 @@ const SPAWN_MAX_ATTEMPTS := 5
 ## Marge (m) laissée au bord du cadre pour que les abeilles ne débordent pas.
 @export var comb_margin: float = 0.01
 
-## Demi-dimensions (largeur, hauteur) de la zone d'attente sur le cadre,
-## dans le plan local X/Y de SpawnMarker.
+## Demi-dimensions (largeur, hauteur) de la zone de déambulation sur le cadre,
+## dans le plan local X/Z de SpawnMarker. Recalculées au lancement à partir du modèle
+## (_compute_comb_extent) ; la valeur saisie ne sert que si le calcul échoue.
 @export var spawn_extent: Vector2 = Vector2(0.2, 0.15)
 
 ## Distance minimale (m) entre deux abeilles à l'apparition.
 @export var spawn_min_spacing: float = 0.01
 
-@export_group("Sortie")
+@export_group("Plancher et tunnel")
+
+## Demi-écart (m) entre les deux vitres, au niveau du plancher.
+@export var floor_half_width: float = 0.02
 
 ## Distance (m) entre le cadre et le point où une abeille qui se laisse tomber touche
 ## le plancher, le long de la normale du cadre. Évite qu'elle traverse la traverse
@@ -37,23 +51,24 @@ const SPAWN_MAX_ATTEMPTS := 5
 ## Longueur (m) du tunnel d'entrée, centré sur EntranceMarker.
 @export var tunnel_length: float = 0.0025
 
-## Demi-écart (m) entre les deux vitres, au niveau du plancher.
-@export var floor_half_width: float = 0.02
-
 ## Demi-largeur (m) du tunnel d'entrée.
 @export var tunnel_half_width: float = 0.01
+
+## Marge (m) entre le centre d'une abeille et une paroi : environ sa demi-largeur.
+@export var wall_margin: float = 0.004
+
+@export_group("Planche d'envol")
 
 ## Distance (m) devant l'embouchure du tunnel, sur la planche, où l'abeille passe avant
 ## de tourner vers son point de décollage (et par où elle arrive avant d'entrer).
 ## Environ une longueur d'abeille : elle s'écarte du mur avant de longer la planche.
 @export var porch_distance: float = 0.015
 
-## Marge (m) entre le centre d'une abeille et une paroi : environ sa demi-largeur.
-@export var wall_margin: float = 0.004
-
-## Zone de décollage et d'atterrissage sur la planche, dans le repère de LandingMarker :
-## ± landing_half_width sur X, de 0 à landing_depth sur +Z.
+## Demi-largeur (m) de la zone de décollage et d'atterrissage, sur l'axe X de LandingMarker.
 @export var landing_half_width: float = 0.04
+
+## Profondeur (m) de la zone de décollage et d'atterrissage, de 0 à +Z dans le repère
+## de LandingMarker.
 @export var landing_depth: float = 0.01
 
 @export_group("Son")
@@ -66,25 +81,33 @@ const SPAWN_MAX_ATTEMPTS := 5
 ## abeilles entrent ou sortent en même temps.
 @export var buzz_smoothing: float = 2.0
 
-## Bourdonnement collectif de la colonie.
-@onready var _buzz: AudioStreamPlayer3D = %HiveBuzz
-
 # =============================================================================
 # Nœuds de la scène
 # =============================================================================
 
-## Point où les abeilles se posent en rentrant (fin de RETURN).
+## Point où les abeilles se posent en rentrant (fin de RETURN). Sa hauteur est celle
+## de l'origine d'une abeille posée sur la planche d'envol.
 @onready var _landing: Marker3D = %LandingMarker
-## Entrée de la ruche : passage entre l'extérieur et le cadre.
+
+## Centre du tunnel d'entrée, au niveau du plancher. Sa hauteur est celle
+## de l'origine d'une abeille posée sur le plancher (voir get_floor_height).
 @onready var _entrance: Marker3D = %EntranceMarker
+
 ## Zone de danse sur le cadre.
 @onready var _dance: Marker3D = %DanceMarker
+
 ## Centre de la zone d'attente sur le cadre (apparition, IDLE).
+## Son plan X/Z est la surface du cadre, son axe Y la normale du cadre.
 @onready var _spawn: Marker3D = %SpawnMarker
+
+## Bourdonnement collectif de la colonie.
+@onready var _buzz: AudioStreamPlayer3D = %HiveBuzz
 
 # =============================================================================
 # État interne
 # =============================================================================
+
+# --- Cadre ---
 
 ## Centre de la zone de déambulation, dans le repère local de SpawnMarker (Y = 0).
 ## Calculé une seule fois dans _ready() par _compute_comb_extent().
@@ -93,6 +116,8 @@ var _comb_center_local := Vector3.ZERO
 ## Positions d'apparition déjà attribuées, dans le plan local X/Z de SpawnMarker,
 ## pour respecter spawn_min_spacing.
 var _used_spawn_positions: Array[Vector2] = []
+
+# --- Présence et voisinage ---
 
 ## Abeilles actuellement dans un état du super-état Ruche.
 ## Tenue à jour par Bee.change_state() via bee_entered() / bee_left() ;
@@ -105,6 +130,47 @@ var bees_inside: int:
 	get:
 		return _comb_bees.size()
 
+## Grille d'évitement : cellule (Vector3i) → abeilles qu'elle contient (Array).
+var _grid: Dictionary = {}
+
+## Frame physique de la dernière reconstruction de la grille, pour ne la faire
+## qu'une fois par frame.
+var _grid_frame := -1
+
+# --- Danses ---
+
+## Danses en cours : danseuse → source annoncée.
+## Tenue à jour par DanceState : start_dance() à l'arrivée sur la piste,
+## stop_dance() à la sortie de l'état (fin normale ou interruption).
+var _dances: Dictionary[Bee, Flower] = {}
+
+## Nombre de suiveuses par danseuse. Tenu à jour par WatchState (enter / exit).
+var _followers: Dictionary[Bee, int] = {}
+
+# --- Déchargement ---
+
+## Nectar accumulé par la colonie depuis le début de la simulation.
+var nectar_stock: float = 0.0
+
+## Abeilles en attente d'une receveuse, dans l'ordre d'arrivée.
+## Seule la première peut être prise en charge.
+var _unload_queue: Array[Bee] = []
+
+## Abeille → instant (horloge _clock) de son entrée dans la file.
+var _queue_entry: Dictionary = {}
+
+## Abeille → attente (s) mesurée au moment de sa prise en charge.
+## Gardée jusqu'à leave_unload_queue() pour être lue par get_wait_time().
+var _measured_wait: Dictionary = {}
+
+## Instant (horloge _clock) où chaque receveuse redevient libre, une case par receveuse.
+## Agrandi à la demande par _find_free_receiver().
+var _receiver_free_at: Array[float] = []
+
+## Horloge de la ruche (s), avancée dans _physics_process() : elle s'arrête
+## avec la pause, contrairement à l'heure système.
+var _clock := 0.0
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
@@ -115,25 +181,18 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_update_buzz_volume(delta)
 
+func _physics_process(delta: float) -> void:
+	# Horloge de la file de déchargement, au rythme de la physique
+	_clock += delta
+
 # =============================================================================
 # Points de passage
 # =============================================================================
-
-## Repère du cadre, en coordonnées globales : origine au centre de la zone d'attente,
-## plan X/Z = surface où marchent les abeilles, axe Y = normale du cadre.
-## orthonormalized() retire une éventuelle échelle du marqueur pour ne garder que la rotation.
-func get_spawn_transform() -> Transform3D:
-	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
 
 ## Centre du tunnel d'entrée, au niveau du plancher de la ruche.
 ## Point de passage entre l'intérieur et la planche d'envol (LEAVE, ENTER).
 func get_entrance_position() -> Vector3:
 	return _entrance.global_position
-	
-## Hauteur (Y global) du centre d'une abeille posée sur le plancher de la ruche.
-## Donnée par EntranceMarker, placé au niveau du plancher à l'entrée.
-func get_floor_height() -> float:
-	return _entrance.global_position.y
 
 ## Axe du tunnel d'entrée, horizontal, orienté de l'intérieur vers la planche d'envol.
 ## Suppose que le tunnel est dans l'axe EntranceMarker → LandingMarker (vu de dessus).
@@ -155,7 +214,44 @@ func get_random_porch_point() -> Vector3:
 	var side := Vector3.UP.cross(axis).normalized()
 	var half_width := tunnel_half_width - wall_margin
 	return get_tunnel_outer_end() + axis * porch_distance + side * randf_range(-half_width, half_width)
-	
+
+## Point de référence de la planche d'envol (centre du bord, côté tunnel).
+## LandingMarker est placé à la hauteur de l'origine d'une abeille posée sur la planche.
+## Pour un point de décollage ou d'atterrissage, préférer get_random_landing_position().
+func get_landing_position() -> Vector3:
+	return _landing.global_position
+
+## Point tiré au hasard dans la zone de décollage / atterrissage de la planche,
+## pour que les abeilles ne partent et n'arrivent pas toutes au même endroit.
+## Zone prise dans le repère de LandingMarker, à la hauteur du marqueur (Y local = 0).
+func get_random_landing_position() -> Vector3:
+	return _landing.global_transform * Vector3(
+		randf_range(-landing_half_width, landing_half_width),
+		0.0,
+		randf_range(0.0, landing_depth)
+	)
+
+## Centre de la zone de danse sur le cadre, où les danseuses se regroupent (DANCE)
+## et où les abeilles en attente viennent les suivre (WATCH).
+func get_dance_position() -> Vector3:
+	return _dance.global_position
+
+# =============================================================================
+# Plancher
+# =============================================================================
+
+## Hauteur (Y global) de l'origine d'une abeille posée sur le plancher de la ruche.
+## Donnée par EntranceMarker, placé à cette hauteur à l'entrée.
+func get_floor_height() -> float:
+	return _entrance.global_position.y
+
+## Point du plancher sous [param comb_point], écarté du cadre de drop_clearance
+## pour ne pas traverser la traverse du bas. Sert à la chute en sortie (LEAVE)
+## comme au point de départ du saut en entrée (ENTER).
+func get_floor_point_below(comb_point: Vector3) -> Vector3:
+	var p := comb_point + get_comb_normal() * drop_clearance
+	return clamp_to_floor(Vector3(p.x, get_floor_height(), p.z))
+
 ## Ramène [param point] entre les parois : entre les deux vitres à l'intérieur de la ruche,
 ## entre les parois du tunnel dans le tunnel. Seule la position latérale est bornée ;
 ## la hauteur et l'avancée ne changent pas. Au-delà du tunnel (planche d'envol),
@@ -187,28 +283,65 @@ func clamp_to_floor(point: Vector3) -> Vector3:
 	var lateral := rel.dot(side)
 	return point - side * (lateral - clampf(lateral, -half_width, half_width))
 
-## Point de référence de la planche d'envol (centre du bord, côté tunnel).
-## Pour un point de décollage ou d'atterrissage, préférer get_random_landing_position().
-func get_landing_position() -> Vector3:
-	return _landing.global_position
-
-## Point tiré au hasard dans la zone de décollage / atterrissage de la planche,
-## pour que les abeilles ne partent et n'arrivent pas toutes au même endroit.
-func get_random_landing_position() -> Vector3:
-	return _landing.global_transform * Vector3(
-		randf_range(-landing_half_width, landing_half_width),
-		0.0,
-		randf_range(0.0, landing_depth)
-	)
-
-## Centre de la zone de danse sur le cadre, où les danseuses se regroupent (DANCE)
-## et où les abeilles en attente viennent les suivre (WATCH).
-func get_dance_position() -> Vector3:
-	return _dance.global_position
-	
 # =============================================================================
 # Zone du cadre (déambulation en IDLE)
 # =============================================================================
+
+## Repère du cadre, en coordonnées globales : origine au centre de la zone d'attente,
+## plan X/Z = surface où marchent les abeilles, axe Y = normale du cadre.
+## orthonormalized() retire une éventuelle échelle du marqueur pour ne garder que la rotation.
+func get_spawn_transform() -> Transform3D:
+	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
+
+## Normale du cadre : sert de vecteur « haut » aux abeilles qui marchent dessus.
+func get_comb_normal() -> Vector3:
+	return _spawn.global_basis.orthonormalized().y
+
+## Centre de la zone de déambulation, en coordonnées globales.
+## Sert de point de repli aux abeilles qui arrivent au bord du cadre.
+func get_comb_center() -> Vector3:
+	return _spawn.global_transform * _comb_center_local
+
+## Point tiré au hasard dans la zone de déambulation du cadre.
+## Contrairement à get_random_spawn_transform(), ne réserve pas la position.
+func get_random_comb_point() -> Vector3:
+	return _spawn.global_transform * Vector3(
+		_comb_center_local.x + randf_range(-spawn_extent.x, spawn_extent.x),
+		0.0,   # à la surface du cadre
+		_comb_center_local.z + randf_range(-spawn_extent.y, spawn_extent.y)
+	)
+
+## Point du cadre à au plus [param radius] de [param from], borné au rectangle
+## et ramené dans le plan de SpawnMarker.
+func get_comb_point_near(from: Vector3, radius: float) -> Vector3:
+	var b := _spawn.global_basis.orthonormalized()
+	# Décalage aléatoire dans le plan du cadre (axes X et Z du marqueur)
+	var offset := b.x * randf_range(-radius, radius) + b.z * randf_range(-radius, radius)
+	return clamp_to_comb(from + offset)
+
+## Point du bord inférieur de la zone de déambulation le plus proche de [param pos].
+## Sert de cible aux abeilles qui descendent le cadre pour sortir.
+func get_comb_bottom_point(pos: Vector3) -> Vector3:
+	var local := _spawn.global_transform.affine_inverse() * clamp_to_comb(pos)
+	# Bas du cadre = côté -Z de SpawnMarker
+	local.z = _comb_center_local.z - spawn_extent.y
+	return _spawn.global_transform * local
+
+## Distance (m) entre [param pos] et le bord inférieur de la zone de déambulation,
+## mesurée dans le plan du cadre (0 = sur le bord, positive au-dessus).
+## Suppose que l'axe Z de SpawnMarker monte le long du cadre (bas = côté -Z).
+func get_comb_bottom_distance(pos: Vector3) -> float:
+	var local := _spawn.global_transform.affine_inverse() * pos
+	return local.z - (_comb_center_local.z - spawn_extent.y)
+
+## Ramène [param point] dans le rectangle du cadre et dans son plan.
+## Renvoie le point inchangé s'il y est déjà.
+func clamp_to_comb(point: Vector3) -> Vector3:
+	var local := _spawn.global_transform.affine_inverse() * point
+	local.x = clampf(local.x, _comb_center_local.x - spawn_extent.x, _comb_center_local.x + spawn_extent.x)
+	local.z = clampf(local.z, _comb_center_local.z - spawn_extent.y, _comb_center_local.z + spawn_extent.y)
+	local.y = 0.0   # collé à la surface du cadre (hauteur de SpawnMarker)
+	return _spawn.global_transform * local
 
 ## Calcule [member spawn_extent] et [member _comb_center_local] à partir de la géométrie
 ## du cadre, exprimée dans le repère de SpawnMarker (plan X/Z, normale Y).
@@ -249,48 +382,7 @@ func _compute_comb_extent() -> void:
 	# Demi-dimensions sur X (largeur) et Z (hauteur du cadre), réduites de la marge
 	# pour que les abeilles n'atteignent pas le bord
 	spawn_extent = Vector2(box.size.x, box.size.z) * 0.5 - Vector2.ONE * comb_margin
-	
-## Normale du cadre : sert de vecteur « haut » aux abeilles qui marchent dessus.
-func get_comb_normal() -> Vector3:
-	return _spawn.global_basis.orthonormalized().y
-	
-## Centre de la zone de déambulation, en coordonnées globales.
-## Sert de point de repli aux abeilles qui arrivent au bord du cadre.
-func get_comb_center() -> Vector3:
-	return _spawn.global_transform * _comb_center_local
 
-## Point du cadre à au plus [param radius] de [param from], borné au rectangle
-## et ramené dans le plan de SpawnMarker.
-func get_comb_point_near(from: Vector3, radius: float) -> Vector3:
-	var b := _spawn.global_basis.orthonormalized()
-	# Décalage aléatoire dans le plan du cadre (axes X et Z du marqueur)
-	var offset := b.x * randf_range(-radius, radius) + b.z * randf_range(-radius, radius)
-	return clamp_to_comb(from + offset)
-
-## Point du bord inférieur de la zone de déambulation le plus proche de [param pos].
-## Sert de cible aux abeilles qui descendent le cadre pour sortir.
-func get_comb_bottom_point(pos: Vector3) -> Vector3:
-	var local := _spawn.global_transform.affine_inverse() * clamp_to_comb(pos)
-	# Bas du cadre = côté -Z de SpawnMarker
-	local.z = _comb_center_local.z - spawn_extent.y
-	return _spawn.global_transform * local
-
-## Distance (m) entre [param pos] et le bord inférieur de la zone de déambulation,
-## mesurée dans le plan du cadre (0 = sur le bord, positive au-dessus).
-## Suppose que l'axe Z de SpawnMarker monte le long du cadre (bas = côté -Z).
-func get_comb_bottom_distance(pos: Vector3) -> float:
-	var local := _spawn.global_transform.affine_inverse() * pos
-	return local.z - (_comb_center_local.z - spawn_extent.y)
-	
-## Ramène [param point] dans le rectangle du cadre et dans son plan.
-## Renvoie le point inchangé s'il y est déjà.
-func clamp_to_comb(point: Vector3) -> Vector3:
-	var local := _spawn.global_transform.affine_inverse() * point
-	local.x = clampf(local.x, _comb_center_local.x - spawn_extent.x, _comb_center_local.x + spawn_extent.x)
-	local.z = clampf(local.z, _comb_center_local.z - spawn_extent.y, _comb_center_local.z + spawn_extent.y)
-	local.y = 0.0   # collé à la surface du cadre (hauteur de SpawnMarker)
-	return _spawn.global_transform * local
-	
 # =============================================================================
 # Apparition des abeilles
 # =============================================================================
@@ -306,6 +398,10 @@ func get_random_spawn_transform() -> Transform3D:
 	# Rotation autour de la normale du cadre : chaque abeille regarde dans une direction différente
 	var oriented := b.rotated(b.y, randf() * TAU)
 	return Transform3D(oriented, pos)
+
+## Vide la liste des positions occupées (à appeler si on relance la simulation).
+func clear_spawn_positions() -> void:
+	_used_spawn_positions.clear()
 
 ## Tire une position libre dans le rectangle du cadre (repère local de SpawnMarker).
 ## Si aucune n'est trouvée après SPAWN_MAX_ATTEMPTS (zone saturée), garde le dernier
@@ -331,12 +427,22 @@ func _is_spawn_position_free(p: Vector2) -> bool:
 			return false
 	return true
 
-## Vide la liste des positions occupées (à appeler si on relance la simulation).
-func clear_spawn_positions() -> void:
-	_used_spawn_positions.clear()
-	
 # =============================================================================
-# Abeilles sur le cadre (évitement)
+# Présence des abeilles (appelé par Bee)
+# =============================================================================
+
+## Déclare [param bee] présente dans la ruche (passage Dehors → Ruche ou apparition).
+func bee_entered(bee: Bee) -> void:
+	# Garde-fou : une abeille ne doit pas être comptée deux fois
+	if not _comb_bees.has(bee):
+		_comb_bees.append(bee)
+
+## Retire [param bee] de la ruche (départ en vol ou suppression).
+func bee_left(bee: Bee) -> void:
+	_comb_bees.erase(bee)
+
+# =============================================================================
+# Voisinage (évitement)
 # =============================================================================
 
 ## Abeilles de la ruche à moins de [param radius] de [param pos], sans [param exclude].
@@ -358,43 +464,29 @@ func get_comb_bees_near(pos: Vector3, radius: float, exclude: Bee = null) -> Arr
 						result.append(other)
 	return result
 
-## Point tiré au hasard dans la zone de déambulation du cadre.
-## Contrairement à get_random_spawn_transform(), ne réserve pas la position.
-func get_random_comb_point() -> Vector3:
-	return _spawn.global_transform * Vector3(
-		_comb_center_local.x + randf_range(-spawn_extent.x, spawn_extent.x),
-		0.0,   # à la surface du cadre
-		_comb_center_local.z + randf_range(-spawn_extent.y, spawn_extent.y)
-	)
+## Cellule de la grille contenant [param pos].
+func _cell_of(pos: Vector3) -> Vector3i:
+	return Vector3i((pos / GRID_CELL).floor())
 
-## Point du plancher sous [param comb_point], écarté du cadre de drop_clearance
-## pour ne pas traverser la traverse du bas. Sert à la chute en sortie (LEAVE)
-## comme au point de départ du saut en entrée (ENTER).
-func get_floor_point_below(comb_point: Vector3) -> Vector3:
-	var p := comb_point + get_comb_normal() * drop_clearance
-	return clamp_to_floor(Vector3(p.x, get_floor_height(), p.z))
+## Reconstruit la grille au premier appel de la frame physique.
+## Les abeilles déjà déplacées pendant cette frame sont rangées avec leur nouvelle
+## position : décalage de quelques dixièmes de mm, sans effet visible sur l'évitement.
+func _update_grid() -> void:
+	var frame := Engine.get_physics_frames()
+	if frame == _grid_frame:
+		return
+	_grid_frame = frame
+	_grid.clear()
+	for b in _comb_bees:
+		var key := _cell_of(b.global_position)
+		if _grid.has(key):
+			_grid[key].append(b)
+		else:
+			_grid[key] = [b]
 
-# =============================================================================
-# Déchargement (boucle négative : saturation)
-# =============================================================================
-
-## Nectar accumulé par la colonie depuis le début de la simulation.
-var nectar_stock: float = 0.0
-
-## Ajoute [param amount] au stock de la ruche (appelé par UNLOAD).
-## TODO : passer par une receveuse libre (try_unload) pour la boucle de saturation.
-func deposit(amount: float) -> void:
-	nectar_stock += amount
-	
 # =============================================================================
 # Danses (boucle positive : recrutement)
 # =============================================================================
-# À coller dans hive.gd, à la place de la section « Danses » actuellement vide.
-
-## Danses en cours : danseuse → source annoncée.
-## Tenue à jour par DanceState : start_dance() à l'arrivée sur la piste,
-## stop_dance() à la sortie de l'état (fin normale ou interruption).
-var _dances: Dictionary[Bee, Flower] = {}
 
 ## Déclare que [param bee] danse pour [param flower].
 func start_dance(bee: Bee, flower: Flower) -> void:
@@ -418,9 +510,6 @@ func get_dance_flower(bee: Bee) -> Flower:
 ## Nombre de danses en cours (statistiques, interface).
 func get_dance_count() -> int:
 	return _dances.size()
-
-## Nombre de suiveuses par danseuse. Tenu à jour par WatchState (enter / exit).
-var _followers: Dictionary[Bee, int] = {}
 
 ## Une suiveuse de plus pour [param dancer].
 func add_follower(dancer: Bee) -> void:
@@ -450,87 +539,17 @@ func get_dancers_near(pos: Vector3, radius: float) -> Array[Bee]:
 	return result
 
 # =============================================================================
-# Présence des abeilles (appelé par Bee)
+# Déchargement (boucle négative : saturation)
 # =============================================================================
 
-## Déclare [param bee] présente dans la ruche (passage Dehors → Ruche ou apparition).
-func bee_entered(bee: Bee) -> void:
-	# Garde-fou : une abeille ne doit pas être comptée deux fois
-	if not _comb_bees.has(bee):
-		_comb_bees.append(bee)
+## Ajoute [param amount] au stock de la ruche (appelé par UNLOAD).
+## TODO : passer par une receveuse libre (try_unload) pour la boucle de saturation.
+func deposit(amount: float) -> void:
+	nectar_stock += amount
 
-
-## Retire [param bee] de la ruche (départ en vol ou suppression).
-func bee_left(bee: Bee) -> void:
-	_comb_bees.erase(bee)
-
-# =============================================================================
-# Grille spatiale (évitement)
-# =============================================================================
-
-## Taille (m) d'une cellule. Doit être supérieure ou égale au plus grand rayon passé
-## à get_comb_bees_near() (CombWalker.AVOID_RADIUS) : toute voisine à portée
-## est alors forcément dans l'une des 27 cellules autour de l'abeille.
-const GRID_CELL := 0.015
-
-## Cellule (Vector3i) → abeilles qu'elle contient (Array).
-var _grid: Dictionary = {}
-
-## Frame physique de la dernière reconstruction, pour ne la faire qu'une fois par frame.
-var _grid_frame := -1
-
-## Cellule contenant [param pos].
-func _cell_of(pos: Vector3) -> Vector3i:
-	return Vector3i((pos / GRID_CELL).floor())
-
-## Reconstruit la grille au premier appel de la frame physique.
-## Les abeilles déjà déplacées pendant cette frame sont rangées avec leur nouvelle
-## position : décalage de quelques dixièmes de mm, sans effet visible sur l'évitement.
-func _update_grid() -> void:
-	var frame := Engine.get_physics_frames()
-	if frame == _grid_frame:
-		return
-	_grid_frame = frame
-	_grid.clear()
-	for b in _comb_bees:
-		var key := _cell_of(b.global_position)
-		if _grid.has(key):
-			_grid[key].append(b)
-		else:
-			_grid[key] = [b]
-	
-# =============================================================================
-# Son
-# =============================================================================
-
-## Ajuste le volume du bourdonnement collectif au nombre d'abeilles présentes.
-func _update_buzz_volume(delta: float) -> void:
-	# Ruche vide : silence (-80 dB est inaudible)
-	var target := -80.0
-	if bees_inside > 0:
-		# Sommation de sources indépendantes : +10·log10(N) dB
-		target = buzz_single_db + linear_to_db(sqrt(float(bees_inside)))
-	# Lissage exponentiel, indépendant du framerate
-	# volume(N) = volume d’une abeille + 10·log₁₀(N)
-	_buzz.volume_db = lerpf(_buzz.volume_db, target, 1.0 - exp(-buzz_smoothing * delta))
-	
-# =============================================================================
-# File d'attente (variable) 
-# =============================================================================
-var _unload_queue: Array[Bee] = []
-var _queue_entry: Dictionary = {}       # Bee -> instant d'entrée dans la file
-var _measured_wait: Dictionary = {}     # Bee -> attente mesurée à la prise en charge
-var _receiver_free_at: Array[float] = []
-var _clock := 0.0                       # horloge de la ruche, arrêtée par la pause
-
-# =============================================================================
-# File d'attente (fonction) 
-# =============================================================================
-
-func _physics_process(delta: float) -> void:
-	_clock += delta
-
-## Renvoie true quand une receveuse prend l'abeille en charge, sinon elle reste en file.
+## Demande une receveuse pour [param bee]. Au premier appel, l'abeille entre dans la file.
+## Renvoie true quand une receveuse la prend en charge ; sinon elle reste en file
+## et doit rappeler la fonction plus tard. Seule la première de la file peut être servie.
 func try_unload(bee: Bee) -> bool:
 	if not _queue_entry.has(bee):
 		_queue_entry[bee] = _clock
@@ -541,20 +560,14 @@ func try_unload(bee: Bee) -> bool:
 	var slot := _find_free_receiver(bee.simulation.receiver_count)
 	if slot == -1:
 		return false
+	# Receveuse occupée pendant toute la durée du transfert
 	_receiver_free_at[slot] = _clock + bee.simulation.unload_duration
 	_unload_queue.pop_front()
 	_measured_wait[bee] = _clock - _queue_entry[bee]
 	return true
 
-func _find_free_receiver(count: int) -> int:
-	while _receiver_free_at.size() < count:
-		_receiver_free_at.append(0.0)
-	for i in count:
-		if _receiver_free_at[i] <= _clock:
-			return i
-	return -1
-
-## Temps d'attente de l'abeille, en cours ou terminé.
+## Temps d'attente (s) de [param bee] : mesuré à la prise en charge, en cours
+## si elle est encore en file, 0 si elle n'y est jamais entrée.
 func get_wait_time(bee: Bee) -> float:
 	if _measured_wait.has(bee):
 		return _measured_wait[bee]
@@ -562,7 +575,7 @@ func get_wait_time(bee: Bee) -> float:
 		return _clock - _queue_entry[bee]
 	return 0.0
 
-## Retire l'abeille de la file et efface ses mesures.
+## Retire [param bee] de la file et efface ses mesures.
 func leave_unload_queue(bee: Bee) -> void:
 	_unload_queue.erase(bee)
 	_queue_entry.erase(bee)
@@ -571,3 +584,27 @@ func leave_unload_queue(bee: Bee) -> void:
 ## Longueur de la file, pour observer la saturation.
 func get_queue_length() -> int:
 	return _unload_queue.size()
+
+## Indice d'une receveuse libre parmi les [param count] premières, ou -1 si toutes
+## sont occupées. Crée les cases manquantes si receiver_count a augmenté.
+func _find_free_receiver(count: int) -> int:
+	while _receiver_free_at.size() < count:
+		_receiver_free_at.append(0.0)
+	for i in count:
+		if _receiver_free_at[i] <= _clock:
+			return i
+	return -1
+
+# =============================================================================
+# Son
+# =============================================================================
+
+## Ajuste le volume du bourdonnement collectif au nombre d'abeilles présentes.
+func _update_buzz_volume(delta: float) -> void:
+	var target := SILENT_DB
+	if bees_inside > 0:
+		# Sommation de sources indépendantes : volume(N) = volume d'une abeille + 10·log10(N).
+		# linear_to_db(√N) = 20·log10(√N) = 10·log10(N)
+		target = buzz_single_db + linear_to_db(sqrt(float(bees_inside)))
+	# Lissage exponentiel, indépendant du framerate
+	_buzz.volume_db = lerpf(_buzz.volume_db, target, 1.0 - exp(-buzz_smoothing * delta))

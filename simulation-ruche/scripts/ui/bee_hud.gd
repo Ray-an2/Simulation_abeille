@@ -300,7 +300,12 @@ func _dance_rows(bee: Bee) -> Array[Dictionary]:
 	rows.append(_row_text("Danse de cette source"))
 	rows.append({"kind": &"compass", "angle": angle, "color": _flower_color(flower),
 			"distance": dist, "distance_ratio": dist_ratio})
-	rows.append(_row_pair("Angle au soleil", "%+.0f°" % rad_to_deg(angle)))
+	# Côté écrit en toutes lettres : un « + » se lit souvent « à droite » (sens des
+	# relèvements), alors qu'ici un angle positif est un angle trigonométrique, à gauche
+	var deg := rad_to_deg(angle)
+	var angle_text := "face au soleil" if absf(deg) < 0.5 \
+			else "%.0f° à %s" % [absf(deg), "gauche" if deg > 0.0 else "droite"]
+	rows.append(_row_pair("Angle au soleil", angle_text))
 	rows.append(_row_pair("Distance", "%.1f m" % dist))
 	rows.append(_row_gap())
 
@@ -416,9 +421,11 @@ func _row_gap() -> Dictionary:
 func _draw_panel(rows: Array[Dictionary], corner: Corner) -> void:
 	if rows.is_empty():
 		return
+	# Largeur utile calculée d'abord : la hauteur des textes longs en dépend
+	var width := panel_width - 2.0 * padding
 	var height := padding * 2.0
 	for row in rows:
-		height += _row_height(row)
+		height += _row_height(row, width)
 
 	var pos := Vector2(margin, margin)
 	if corner == CORNER_TOP_RIGHT or corner == CORNER_BOTTOM_RIGHT:
@@ -430,18 +437,21 @@ func _draw_panel(rows: Array[Dictionary], corner: Corner) -> void:
 	draw_rect(rect, BORDER_COLOR, false, 1.0)
 
 	var at := pos + Vector2(padding, padding)
-	var width := panel_width - 2.0 * padding
 	for row in rows:
 		_draw_row(row, at, width)
-		at.y += _row_height(row)
+		at.y += _row_height(row, width)
 
 
-## Hauteur (px) occupée par une ligne.
-func _row_height(row: Dictionary) -> float:
+## Hauteur (px) occupée par une ligne, pour une largeur utile de [param width] pixels.
+func _row_height(row: Dictionary, width: float) -> float:
 	var lh := _line_height(font_size)
 	match row.kind:
 		&"title":
 			return _line_height(title_font_size)
+		&"text":
+			# Texte renvoyé à la ligne : autant de lignes qu'il en faut dans la largeur
+			return _font.get_multiline_string_size(row.text, HORIZONTAL_ALIGNMENT_LEFT,
+					width, font_size).y + 3.0
 		&"badge":
 			return lh + 6.0
 		&"gauge":
@@ -460,7 +470,7 @@ func _draw_row(row: Dictionary, at: Vector2, width: float) -> void:
 		&"title":
 			_text(at, row.text, TEXT_COLOR, title_font_size)
 		&"text":
-			_text(at, row.text, row.color)
+			_text_wrapped(at, row.text, row.color, width)
 		&"pair":
 			_text(at, row.label, row.label_color)
 			_text_right(at + Vector2(width, 0.0), row.value, row.value_color)
@@ -507,7 +517,6 @@ func _draw_compass(center: Vector2, angle: float, color: Color, distance: float,
 
 	# get_dance_angle tourne autour de +Y (sens trigonométrique vu du dessus).
 	# À l'écran, l'axe Y descend : le même sens s'obtient avec une rotation négative.
-	# Si la flèche apparaît en miroir de la réalité, inverser le signe.
 	var dir := Vector2.UP.rotated(-angle)
 	var length := (compass_radius - 8.0) * lerpf(compass_min_arrow, 1.0, distance_ratio)
 	var tip := center + dir * length
@@ -537,6 +546,12 @@ func _text(pos: Vector2, text: String, color: Color, fsize := -1) -> void:
 	# draw_string place la ligne de base en pos : on ajoute l'ascendante
 	draw_string(_font, pos + Vector2(0.0, _font.get_ascent(s)), text,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, s, color)
+			
+## Texte renvoyé à la ligne dans [param width] pixels, coin haut gauche en [param pos].
+func _text_wrapped(pos: Vector2, text: String, color: Color, width: float) -> void:
+	# Comme draw_string, draw_multiline_string place la ligne de base de la 1re ligne en pos
+	draw_multiline_string(_font, pos + Vector2(0.0, _font.get_ascent(font_size)), text,
+			HORIZONTAL_ALIGNMENT_LEFT, width, font_size, -1, color)
 
 
 ## Texte dont le coin haut droit est en [param pos].

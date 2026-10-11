@@ -87,6 +87,18 @@ class_name Simulation extends Node3D
 ## y retourne d'elle-même (reprise du matin après la nuit).
 @export var p_reactivate: float = 0.02
 
+## Nombre de prélèvements sur une même fleur avant de passer à la suivante.
+## 1 : une fleur ne contient que quelques microlitres de nectar.
+@export_range(1, 10) var harvests_per_flower: int = 1
+
+## Distance (m) maximale entre deux fleurs butinées pendant un même trajet :
+## taille d'un massif. Valeur de réglage, à adapter à l'espacement des fleurs.
+@export var patch_radius: float = 5.0
+
+## Vitesse maximale (m/s) du vol d'une fleur à l'autre.
+## Valeur de réglage, non mesurée : vol lent de prospection.
+@export var flower_hop_speed: float = 1.5
+
 @export_group("Danse")
 
 ## Durée de danse (s) pour une source de rentabilité 1.
@@ -206,9 +218,6 @@ class_name Simulation extends Node3D
 
 ## Durée (s) du vol stationnaire au-dessus de la planche d'envol.
 @export var hover_time_board: float = 0.3
-
-## Durée (s) du vol stationnaire devant une fleur.
-@export var hover_time_flower: float = 1.0
 
 ## Vitesse (m/s) de la descente finale, et vitesse plancher de l'approche.
 @export var touchdown_speed: float = 0.01
