@@ -9,6 +9,8 @@ signal state_changed(bee: Bee, from: BeeState, to: BeeState)
 # Constantes
 # =============================================================================
 
+# --- Marche : conversion de la vitesse de l'animation ---
+
 ## Vitesse d'avance du corps dans _bee_walk à speed_scale = 1, en unités du squelette par seconde :
 ## chaque pied recule de 220 unités pendant les 0,25 s d'appui.
 const WALK_ANIM_SPEED := 880.0
@@ -25,6 +27,8 @@ const SKELETON_SCALE := 0.0008
 ## évite d'alterner walk et idle pendant les phases d'accélération et de freinage.
 const WALK_MIN_FACTOR := 0.05
 
+# --- Vol : inclinaison dans les virages ---
+
 ## Inclinaison (rad) par rad/s de vitesse de lacet. Avec 0,15, un virage à
 ## 4 rad/s (max_flight_turn_rate) donne environ 34° d'inclinaison.
 const BANK_GAIN := 0.15
@@ -40,6 +44,8 @@ const BANK_SMOOTHING := 8.0
 ## 1 = vue solidaire du corps). La tête compense une partie du roulis.
 const CAMERA_BANK_FACTOR := 0.5
 
+# --- Animation : fréquence de mise à jour ---
+
 ## Distance (m) caméra–abeille en dessous de laquelle l'animation est mise à jour
 ## à chaque frame (vue abeille, gros plan sur le cadre).
 const ANIM_NEAR := 0.5
@@ -47,32 +53,25 @@ const ANIM_NEAR := 0.5
 ## Au-delà de ANIM_NEAR : une mise à jour de l'animation toutes les N frames.
 const ANIM_FAR_STEP := 4
 
-# =============================================================================
-# Pelotes de pollen (indicateur visuel de charge)
-# =============================================================================
+# --- Son : bourdonnement individuel ---
+
+## Animations où l'abeille bat des ailes. Avec la vitesse de vol, elles décident
+## du bourdonnement individuel (voir _update_buzz()).
+const WING_ANIMS: Array[StringName] = [&"_bee_takeoff", &"_bee_hover", &"_bee_landing"]
+
+## Volume considéré comme silencieux : en dessous, on arrête le player.
+const BUZZ_OFF_DB := -60.0
+
+## Vitesse du fondu (1/s). Avec 12, l'extinction prend environ 0,3 s.
+const BUZZ_FADE_SPEED := 12.0
+
+# --- Pelotes de pollen (indicateur visuel de charge) ---
 
 ## Durée (s) de l'animation de croissance des pelotes après chaque visite.
 const POLLEN_GROW_TIME := 0.8
 
 ## Taille des pelotes pour une charge minimale (fraction de leur taille maximale).
 const POLLEN_MIN_SCALE := 0.3
-
-## Pelotes de pollen, enfants des BoneAttachment3D des pattes arrière.
-## On agit sur elles et non sur les attachements, dont la transformation
-## est imposée par l'os à chaque frame.
-@onready var _pollen: Array[MeshInstance3D] = [
-	$BonePollenLeft/PollenBall,
-	$BonePollenRight/PollenBall,
-]
-
-## Tween en cours sur les pelotes, pour l'interrompre si la charge change de nouveau.
-var _pollen_tween: Tween
-
-## Échelle de chaque pelote réglée dans bee.tscn : c'est sa taille maximale.
-## update_pollen() en applique une fraction. Sans elle, le tween écraserait
-## l'échelle de l'éditeur (×1000, pour compenser celle du squelette)
-## et les pelotes deviendraient invisibles.
-var _pollen_full_scale: Array[Vector3] = []
 
 # =============================================================================
 # Références injectées par Simulation
@@ -102,6 +101,56 @@ var simulation: Simulation
 
 ## Bourdonnement individuel, audible uniquement en vol.
 @onready var _buzz: AudioStreamPlayer3D = $Buzz
+
+## Pelotes de pollen, enfants des BoneAttachment3D des pattes arrière.
+## On agit sur elles et non sur les attachements, dont la transformation
+## est imposée par l'os à chaque frame.
+@onready var _pollen: Array[MeshInstance3D] = [
+	$BonePollenLeft/PollenBall,
+	$BonePollenRight/PollenBall,
+]
+
+# =============================================================================
+# États
+# =============================================================================
+
+## État actif. Son [method BeeState.update] est appelé à chaque frame physique.
+var current_state: BeeState
+
+# --- Ruche ---
+
+## Attente dans la ruche. État initial.
+var idle: IdleState
+
+## Sortie à pied jusqu'à la planche d'envol, puis décollage (voir LeaveState.then()).
+var leave_hive: LeaveState
+
+## Entrée à pied de la planche d'envol jusqu'au cadre.
+var enter_hive: EnterState
+
+## Suit une danseuse pour mémoriser la source annoncée (recrutement).
+var watch: WatchState
+
+## Danse frétillante : annonce la source à la ruche (recrutement).
+var dance: DanceState
+
+## Décharge le nectar dans la ruche
+var unload: UnloadState
+
+# --- Dehors ---
+
+## Exploration à la recherche d'une fleur, avec timeout.
+var scout: ScoutState
+
+## Vol en direction d'une source connue
+var go: GoState
+
+## Butine une source
+var forage: ForageState
+
+## État de retour à la ruche
+var return_home: ReturnState
+
 # =============================================================================
 # Données partagées entre les états
 # =============================================================================
@@ -109,22 +158,6 @@ var simulation: Simulation
 ## Locomotion sur le cadre (cap, vitesse, évitement), partagée par les états Ruche.
 ## Conservée d'un état à l'autre, réinitialisée à chaque arrivée dans la ruche.
 var walker: CombWalker
-
-## Vitesse de vol actuelle (m/s). Repart de 0 à chaque décollage et rejoint
-## fly_speed avec fly_acceleration ; diminue à l'approche de la cible.
-var _flight_speed := 0.0
-
-## Vitesse d'avance (m/s) du corps dans _bee_walk à speed_scale = 1, en unités du monde.
-## Calculée une fois dans _ready() : l'échelle du modèle ne change pas pendant la simulation.
-var _walk_anim_world_speed := 0.0
-
-## Inclinaison actuelle (rad) et avant horizontal à l'image précédente (mesure du lacet).
-var _bank := 0.0
-var _prev_forward := Vector3.ZERO
-
-## Sens de contournement préféré (+1 ou -1), tiré à la création : face à un obstacle
-## pile dans l'axe, les abeilles se répartissent des deux côtés au lieu de partir toutes à gauche.
-var _avoid_side := 1.0
 
 ## Quantité de nectar transportée. Remplie en FORAGE, vidée en UNLOAD.
 var nectar: float = 0.0
@@ -151,14 +184,40 @@ var distance: float = 0.0
 ## Calculé en UNLOAD, encodé par DANCE dans l'orientation de la phase frétillante.
 var angle: float = 0.0
 
+## Normale de la surface sur laquelle l'abeille est posée ; Vector3.ZERO quand elle vole.
+var surface_normal: Vector3 = Vector3.ZERO
+
+# =============================================================================
+# État interne
+# =============================================================================
+
+# --- Vol ---
+
+## Vitesse de vol actuelle (m/s). Repart de 0 à chaque décollage et rejoint
+## fly_speed avec fly_acceleration ; diminue à l'approche de la cible.
+var _flight_speed := 0.0
+
+## Inclinaison actuelle (rad) et avant horizontal à l'image précédente (mesure du lacet).
+var _bank := 0.0
+var _prev_forward := Vector3.ZERO
+
+## Sens de contournement préféré (+1 ou -1), tiré à la création : face à un obstacle
+## pile dans l'axe, les abeilles se répartissent des deux côtés au lieu de partir toutes à gauche.
+var _avoid_side := 1.0
+
+# --- Orientation d'origine (bee.tscn) ---
+
 ## Orientation d'origine du modèle dans bee.tscn, à laquelle on ajoute l'inclinaison.
 var _model_base_basis: Basis
 
 ## Orientation d'origine du marqueur dans bee.tscn.
 var _camera_anchor_base_basis: Basis
 
-## Normale de la surface sur laquelle l'abeille est posée ; Vector3.ZERO quand elle vole.
-var surface_normal: Vector3 = Vector3.ZERO
+# --- Animation ---
+
+## Vitesse d'avance (m/s) du corps dans _bee_walk à speed_scale = 1, en unités du monde.
+## Calculée une fois dans _ready() : l'échelle du modèle ne change pas pendant la simulation.
+var _walk_anim_world_speed := 0.0
 
 ## Temps accumulé depuis la dernière mise à jour de l'animation.
 var _anim_accum := 0.0
@@ -166,95 +225,99 @@ var _anim_accum := 0.0
 ## Décalage propre à chaque abeille : elles ne sont pas toutes mises à jour à la même frame.
 var _anim_offset := 0
 
-# =============================================================================
-# États
-# =============================================================================
+# --- Son ---
 
-# Attente dans la ruche (jaune). État initial.
-var idle: IdleState
+## Volume (dB) du bourdonnement en vol : celui réglé sur le nœud Buzz dans bee.tscn.
+## Relevé dans _ready(), avant que le fondu ne le modifie.
+var _buzz_on_db := 0.0
 
-## Sortie à pied jusqu'à la planche d'envol, puis décollage (voir LeaveState.then()).
-var leave_hive: LeaveState
+# --- Pelotes de pollen ---
 
-## Entrée à pied de la planche d'envol jusqu'au cadre.
-var enter_hive: EnterState
+## Tween en cours sur les pelotes, pour l'interrompre si la charge change de nouveau.
+var _pollen_tween: Tween
 
-## Exploration à la recherche d'une fleur, avec timeout.
-var scout: ScoutState
-
-## État actif. Son [method BeeState.update] est appelé à chaque frame physique.
-var current_state: BeeState
-
-## État de retour à la ruche
-var return_home: ReturnState
-
-## Décharge le nectar dans la ruche
-var unload: UnloadState
-
-## Vol en direction d'une source connue
-var go: GoState
-
-## Butine une source
-var forage: ForageState
-
-## Danse frétillante : annonce la source à la ruche (recrutement).
-var dance: DanceState
-
-## Suit une danseuse pour mémoriser la source annoncée (recrutement).
-var watch: WatchState
+## Échelle de chaque pelote réglée dans bee.tscn : c'est sa taille maximale.
+## update_pollen() en applique une fraction. Sans elle, le tween écraserait
+## l'échelle de l'éditeur (×1000, pour compenser celle du squelette)
+## et les pelotes deviendraient invisibles.
+var _pollen_full_scale: Array[Vector3] = []
 
 # =============================================================================
 # Cycle de vie
 # =============================================================================
 
-## Crée les huit états et active l'état initial IDLE.
+## Crée les états et la locomotion sur le cadre, relève les réglages de bee.tscn,
+## puis active l'état initial IDLE.
 func _ready() -> void:
 	assert(hive != null and simulation != null,
 		"Bee '%s' : hive=%s, simulation=%s — doivent être assignés avant add_child()"
 		% [name, hive, simulation])
-	
+
+	# Locomotion sur le cadre, partagée par les états Ruche.
+	# Créée en premier : un état pourrait s'en servir dès sa construction.
+	walker = CombWalker.new(self)
+
 	idle = IdleState.new(self)
 	leave_hive = LeaveState.new(self)
 	enter_hive = EnterState.new(self)
 	scout = ScoutState.new(self)
 	return_home = ReturnState.new(self)
-	walker = CombWalker.new(self)
 	unload = UnloadState.new(self)
 	go = GoState.new(self)
 	forage = ForageState.new(self)
 	dance = DanceState.new(self)
 	watch = WatchState.new(self)
-	
+
 	_model_base_basis = _model.transform.basis
 	_camera_anchor_base_basis = _camera_anchor.transform.basis
+
+	# Volume de référence réglé dans l'inspecteur, avant toute modification par le fondu
+	_buzz_on_db = _buzz.volume_db
+
 	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
 	_buzz.pitch_scale = randf_range(0.9, 1.1)
+
 	# Conversion de la vitesse de l'animation : unités du squelette → modèle → monde.
 	# IMPORT_ROOT_SCALE : échelle appliquée à l'import, absente du nœud Model.
 	var model_scale := ($Model as Node3D).global_basis.get_scale().x
 	_walk_anim_world_speed = WALK_ANIM_SPEED * SKELETON_SCALE * IMPORT_ROOT_SCALE * model_scale
-	
+
 	# Fondu de 0,25 s entre deux animations : masque l'écart de pose des pattes
 	# et des ailes entre takeoff, hover et landing. Réglé ici plutôt que dans
 	# l'inspecteur, car l'AnimationPlayer fait partie du modèle importé.
 	_anim.playback_default_blend_time = 0.25
-	
+
 	# L'animation n'avance plus toute seule : _process() l'avance, plus ou moins souvent
 	_anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	_anim_offset = randi() % ANIM_FAR_STEP
-	
+
 	_avoid_side = 1.0 if randf() < 0.5 else -1.0
-	
+
 	# Taille maximale des pelotes : celle réglée dans bee.tscn
 	for p in _pollen:
 		_pollen_full_scale.append(p.scale)
-	
+
 	# Abeille vide au départ : pelotes masquées
 	update_pollen()
-	
+
 	change_state(idle)
 
+## Avance l'animation à chaque frame près de la caméra, toutes les ANIM_FAR_STEP frames
+## au-delà. Le temps accumulé est rattrapé d'un coup : la vitesse reste juste,
+## seule la fluidité baisse, ce qui ne se voit pas de loin.
+func _process(delta: float) -> void:
+	_anim_accum += delta
+	var step := 1
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and cam.global_position.distance_squared_to(global_position) > ANIM_NEAR * ANIM_NEAR:
+		step = ANIM_FAR_STEP
+	if (Engine.get_process_frames() + _anim_offset) % step != 0:
+		return
+	_anim.advance(_anim_accum)
+	_anim_accum = 0.0
+
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
+## Les transitions imposées par le super-état (interrupt) passent avant celles de l'état.
 func _physics_process(delta: float) -> void:
 	if current_state == null:
 		return
@@ -262,20 +325,33 @@ func _physics_process(delta: float) -> void:
 	# après évaluation de la source
 	if current_state is FieldState:
 		trip_time += delta
-	var next: BeeState = current_state.update(delta)
+	var next: BeeState = current_state.interrupt()
+	if next == null:
+		next = current_state.update(delta)
 	if next != null:
 		change_state(next)
 
+	_update_buzz(delta)
+
+## Retire l'abeille de la ruche si elle est supprimée alors qu'elle y est.
+func _exit_tree() -> void:
+	if current_state is HiveState:
+		hive.bee_left(self)
+
+# =============================================================================
+# Transitions
+# =============================================================================
+
 ## Quitte l'état courant ([method BeeState.exit]) puis entre dans [param next]
 ## ([method BeeState.enter]). Seul point de passage de toutes les transitions.
-## Prévient aussi la ruche et le son quand l'abeille passe de Ruche à Dehors ou l'inverse.
+## Prévient aussi la ruche quand l'abeille passe de Ruche à Dehors ou l'inverse.
 func change_state(next: BeeState) -> void:
-	var previous := current_state 
-	
+	var previous := current_state
+
 	# Super-état avant / après : seul un passage Ruche ↔ Dehors nous intéresse
 	var was_inside := current_state is HiveState   # false au premier appel (null)
 	var is_inside := next is HiveState
-	
+
 	surface_normal = hive.get_comb_normal()
 
 	if current_state != null:
@@ -289,7 +365,8 @@ func change_state(next: BeeState) -> void:
 	current_state.enter()
 	state_changed.emit(self, previous, next)
 
-## Prévient la ruche, réinitialise la marche et allume/coupe le bourdonnement individuel.
+## Prévient la ruche et réinitialise la marche. Le bourdonnement individuel
+## ne dépend pas d'ici : _update_buzz() le règle à chaque image.
 func _on_location_changed(inside: bool) -> void:
 	# Passage Ruche ↔ Dehors : toujours posée sur la planche d'envol
 	land()
@@ -297,19 +374,11 @@ func _on_location_changed(inside: bool) -> void:
 		hive.bee_entered(self)
 		# Arrivée sur le cadre : l'abeille repart immobile, dans la direction où elle regarde
 		walker.reset()
-		_buzz.stop()
 	else:
-		hive.bee_left(self)
-		# Départ aléatoire dans la boucle : les abeilles ne sont pas en phase
-		_buzz.play(randf() * _buzz.stream.get_length())
-
-## Retire l'abeille de la ruche si elle est supprimée alors qu'elle y est.
-func _exit_tree() -> void:
-	if current_state is HiveState:
 		hive.bee_left(self)
 
 # =============================================================================
-# Déplacement (appelé par les états)
+# Vol (appelé par les états)
 # =============================================================================
 
 ## [param arrive] : true pour s'arrêter sur la cible (fleur, planche d'envol),
@@ -377,7 +446,7 @@ func fly_towards(target: Vector3, delta: float, arrive := true, max_speed := 0.0
 	var floor_y := get_ground_height(global_position) + simulation.ground_clearance
 	if global_position.y < floor_y:
 		global_position.y = floor_y
-	
+
 	_update_bank(delta)
 
 ## Vol vers `target` à la vitesse `speed`, le haut de l'abeille ramené progressivement vers `up`.
@@ -400,6 +469,70 @@ func orient(forward: Vector3, up: Vector3, delta: float) -> void:
 	var s := global_basis.get_scale()                     # suppose une échelle uniforme
 	global_basis = Basis(global_basis.get_rotation_quaternion().slerp(target_q, w)).scaled(s)
 
+## Vitesse de vol courante (m/s). Lue par FieldState pour enchaîner sans rupture
+## entre fly_towards() et ses phases de décollage et d'approche finale.
+func get_flight_speed() -> float:
+	return _flight_speed
+
+## Impose la vitesse de vol courante. Appelée par FieldState à la fin du décollage
+## et pendant l'approche finale, pour que fly_towards() reparte de la bonne vitesse.
+func set_flight_speed(speed: float) -> void:
+	_flight_speed = speed
+
+## Remet la vitesse de vol à zéro. À appeler dès que l'abeille est posée
+## (fleur, planche d'envol) : le prochain vol repartira d'un décollage.
+func land() -> void:
+	_flight_speed = 0.0
+	_bank = 0.0
+	_prev_forward = Vector3.ZERO   # pas de lacet mesuré au prochain décollage
+	_model.transform.basis = _model_base_basis
+	_camera_anchor.transform.basis = _camera_anchor_base_basis
+
+## true si l'abeille est posée : land() a remis sa vitesse de vol à zéro
+## et aucun vol n'a repris depuis. FieldState s'en sert pour décider d'un décollage.
+func is_landed() -> bool:
+	return is_zero_approx(_flight_speed)
+
+# =============================================================================
+# Marche (appelé par les états)
+# =============================================================================
+
+## Marche vers [param target] à la vitesse [member Simulation.walk_speed],
+## multipliée par [param speed_factor].
+## Réservé aux états du super-état Ruche.
+## [param up] est la normale de la surface parcourue : passer
+## [method Hive.get_comb_normal] pour que l'abeille reste à plat sur le cadre.
+## Règle aussi la cadence des pattes sur la vitesse appliquée.
+func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP, speed_factor: float = 1.0) -> void:
+	_move_towards(target, simulation.walk_speed * speed_factor * delta, up, delta)
+	# Les pattes suivent la vitesse appliquée : walker (cadre, plancher, tunnel)
+	# comme lignes droites de LEAVE et ENTER sur la planche
+	play_walk(speed_factor)
+
+## Se déplace vers [param target] à [param speed] m/s, sans s'orienter dans le sens
+## du mouvement : l'abeille tourne progressivement pour regarder vers [param facing],
+## avec [param up] comme vecteur haut. Sert aux petits sauts entre le bas du cadre
+## et le plancher, où elle se retourne en tombant.
+func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, delta: float) -> void:
+	_face(facing, up, delta)
+	# move_toward ne dépasse jamais la cible : arrivée exacte
+	global_position = global_position.move_toward(target, speed * delta)
+
+# =============================================================================
+# Requêtes (appelé par les états)
+# =============================================================================
+
+## Renvoie [code]true[/code] si l'abeille est à moins de [param radius] de [param target].
+## Sert de test d'arrivée pour GO, RETURN, etc.
+func is_near(target: Vector3, radius: float) -> bool:
+	# Comparaison des carrés : évite une racine carrée à chaque appel
+	return global_position.distance_squared_to(target) <= radius * radius
+
+## Distance (m) du centre de l'abeille à sa tête, le long de son axe avant (+Z).
+## Mesurée sur le marqueur : suit automatiquement l'échelle du modèle.
+func get_head_offset() -> float:
+	return (_head.global_position - global_position).dot(global_basis.z.normalized())
+
 ## Hauteur du terrain sous [param pos], ou -INF si inconnue
 ## (pas de terrain assigné, trou dans le terrain, hors de la carte).
 func get_ground_height(pos: Vector3) -> float:
@@ -414,6 +547,100 @@ func get_ground_height(pos: Vector3) -> float:
 func is_path_clear(from: Vector3, to: Vector3) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(from, to, simulation.obstacle_mask)
 	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+# =============================================================================
+# Source connue (appelé par les états)
+# =============================================================================
+
+## Mémorise [param flower] comme source. [param dancer] : danseuse suivie en WATCH,
+## null pour une source trouvée en exploration. La rentabilité est inconnue
+## tant que la source n'a pas été évaluée au déchargement.
+func learn_source(flower: Flower, dancer: Bee = null) -> void:
+	known_flower = flower
+	known_profitability = 0.0
+	recruited_by = dancer
+
+## Oublie la source connue (vide, ou jugée trop peu rentable).
+func forget_source() -> void:
+	known_flower = null
+	known_profitability = 0.0
+	recruited_by = null
+
+# =============================================================================
+# Animation (appelé par les états)
+# =============================================================================
+
+## Joue [param anim_name] depuis un point aléatoire, pour que les abeilles
+## ne battent pas des ailes en parfaite synchronisation.
+func play_animation(anim_name: StringName) -> void:
+	# Toute demande explicite annule la file : sans ça, un _bee_hover mis en file
+	# au décollage pourrait démarrer après _bee_landing si le vol est très court
+	_anim.clear_queue()
+	_anim.speed_scale = 1.0
+	if _anim.current_animation == anim_name:
+		return
+	_anim.play(anim_name)
+	if _anim.get_animation(anim_name).loop_mode != Animation.LOOP_NONE:
+		_anim.seek(randf() * _anim.current_animation_length, true)
+
+## Joue _bee_walk à la cadence qui correspond à la vitesse réelle, ou _bee_idle à l'arrêt.
+## [param speed_factor] multiplie walk_speed, comme dans walk_towards().
+func play_walk(speed_factor: float) -> void:
+	if speed_factor < WALK_MIN_FACTOR:
+		play_animation(&"_bee_idle")
+		return
+	play_animation(&"_bee_walk")
+	# Cadence des pattes = vitesse réelle / vitesse de l'animation à speed_scale = 1
+	_anim.speed_scale = simulation.walk_speed * speed_factor / _walk_anim_world_speed
+
+## Met [param anim_name] en file d'attente : elle démarrera à la fin de l'animation en cours
+## (qui ne doit donc pas être bouclée). Sert à enchaîner _bee_takeoff puis _bee_hover.
+func queue_animation(anim_name: StringName) -> void:
+	_anim.queue(anim_name)
+
+# =============================================================================
+# Pelotes de pollen (appelé par les états)
+# =============================================================================
+
+## Applique le matériau de [param flower] aux deux pelotes.
+## material_override ne modifie pas la ressource : chaque abeille pointe
+## simplement vers l'un des trois matériaux partagés.
+func set_pollen_from(flower: Flower) -> void:
+	for p in _pollen:
+		p.material_override = flower.pollen_material
+
+## Met à jour les pelotes selon le remplissage de l'abeille (entre 0 et 1).
+## À appeler après chaque récolte (FORAGE) et après le déchargement (UNLOAD).
+func update_pollen() -> void:
+	var ratio := clampf(nectar / simulation.forage_capacity, 0.0, 1.0)
+
+	# Un tween précédent encore actif écraserait la nouvelle taille
+	if _pollen_tween != null and _pollen_tween.is_valid():
+		_pollen_tween.kill()
+
+	# Abeille vide : pelotes masquées, sans animation
+	if ratio <= 0.0:
+		for p in _pollen:
+			p.visible = false
+		return
+
+	# Fraction de la taille maximale correspondant à la charge
+	var factor := lerpf(POLLEN_MIN_SCALE, 1.0, ratio)
+	_pollen_tween = create_tween().set_parallel()
+	for i in _pollen.size():
+		var p := _pollen[i]
+		var full := _pollen_full_scale[i]
+		# Première apparition : la pelote part de la moitié de la taille minimale
+		if not p.visible:
+			p.scale = full * POLLEN_MIN_SCALE * 0.5
+			p.visible = true
+		_pollen_tween.tween_property(p, "scale", full * factor, POLLEN_GROW_TIME)
+
+# =============================================================================
+# Utilitaires internes
+# =============================================================================
+
+# --- Vol ---
 
 ## Point à viser à cette frame pour aller vers [param target] sans traverser
 ## d'obstacle ni le sol.
@@ -473,204 +700,6 @@ func _above_ground(point: Vector3, target: Vector3) -> Vector3:
 	point.y = maxf(point.y, min_y)
 	return point
 
-## Marche vers [param target] à la vitesse [member Simulation.walk_speed],
-## multipliée par [param speed_factor].
-## Réservé aux états du super-état Ruche.
-## [param up] est la normale de la surface parcourue : passer
-## [method Hive.get_comb_normal] pour que l'abeille reste à plat sur le cadre.
-## Règle aussi la cadence des pattes sur la vitesse appliquée.
-func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP, speed_factor: float = 1.0) -> void:
-	_move_towards(target, simulation.walk_speed * speed_factor * delta, up, delta)
-	# Les pattes suivent la vitesse appliquée : walker (cadre, plancher, tunnel)
-	# comme lignes droites de LEAVE et ENTER sur la planche
-	play_walk(speed_factor)
-	
-## Renvoie [code]true[/code] si l'abeille est à moins de [param radius] de [param target].
-## Sert de test d'arrivée pour GO, RETURN, etc.
-func is_near(target: Vector3, radius: float) -> bool:
-	# Comparaison des carrés : évite une racine carrée à chaque appel
-	return global_position.distance_squared_to(target) <= radius * radius
-
-## Se déplace vers [param target] à [param speed] m/s, sans s'orienter dans le sens
-## du mouvement : l'abeille tourne progressivement pour regarder vers [param facing],
-## avec [param up] comme vecteur haut. Sert aux petits sauts entre le bas du cadre
-## et le plancher, où elle se retourne en tombant.
-func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, delta: float) -> void:
-	_face(facing, up, delta)
-	# move_toward ne dépasse jamais la cible : arrivée exacte
-	global_position = global_position.move_toward(target, speed * delta)
-
-## Vitesse de vol courante (m/s). Lue par FieldState pour enchaîner sans rupture
-## entre fly_towards() et ses phases de décollage et d'approche finale.
-func get_flight_speed() -> float:
-	return _flight_speed
-
-## Impose la vitesse de vol courante. Appelée par FieldState à la fin du décollage
-## et pendant l'approche finale, pour que fly_towards() reparte de la bonne vitesse.
-func set_flight_speed(speed: float) -> void:
-	_flight_speed = speed
-
-## Met [param anim_name] en file d'attente : elle démarrera à la fin de l'animation en cours
-## (qui ne doit donc pas être bouclée). Sert à enchaîner _bee_takeoff puis _bee_hover.
-func queue_animation(anim_name: StringName) -> void:
-	_anim.queue(anim_name)
-
-## Remet la vitesse de vol à zéro. À appeler dès que l'abeille est posée
-## (fleur, planche d'envol) : le prochain vol repartira d'un décollage.
-func land() -> void:
-	_flight_speed = 0.0
-	_bank = 0.0
-	_prev_forward = Vector3.ZERO   # pas de lacet mesuré au prochain décollage
-	_model.transform.basis = _model_base_basis
-	_camera_anchor.transform.basis = _camera_anchor_base_basis
-
-## true si l'abeille est posée : land() a remis sa vitesse de vol à zéro
-## et aucun vol n'a repris depuis. FieldState s'en sert pour décider d'un décollage.
-func is_landed() -> bool:
-	return is_zero_approx(_flight_speed)
-
-## Distance (m) du centre de l'abeille à sa tête, le long de son axe avant (+Z).
-## Mesurée sur le marqueur : suit automatiquement l'échelle du modèle.
-func get_head_offset() -> float:
-	return (_head.global_position - global_position).dot(global_basis.z.normalized())
-	
-# =============================================================================
-# Animation (appelé par les états)
-# =============================================================================
-
-## Joue _bee_walk à la cadence qui correspond à la vitesse réelle, ou _bee_idle à l'arrêt.
-## [param speed_factor] multiplie walk_speed, comme dans walk_towards().
-func play_walk(speed_factor: float) -> void:
-	if speed_factor < WALK_MIN_FACTOR:
-		play_animation(&"_bee_idle")
-		return
-	play_animation(&"_bee_walk")
-	# Cadence des pattes = vitesse réelle / vitesse de l'animation à speed_scale = 1
-	_anim.speed_scale = simulation.walk_speed * speed_factor / _walk_anim_world_speed
-
-## Joue [param anim_name] depuis un point aléatoire, pour que les abeilles
-## ne battent pas des ailes en parfaite synchronisation.
-func play_animation(anim_name: StringName) -> void:
-	# Toute demande explicite annule la file : sans ça, un _bee_hover mis en file
-	# au décollage pourrait démarrer après _bee_landing si le vol est très court
-	_anim.clear_queue()
-	_anim.speed_scale = 1.0
-	if _anim.current_animation == anim_name:
-		return
-	_anim.play(anim_name)
-	if _anim.get_animation(anim_name).loop_mode != Animation.LOOP_NONE:
-		_anim.seek(randf() * _anim.current_animation_length, true)
-
-## Applique le matériau de [param flower] aux deux pelotes.
-## material_override ne modifie pas la ressource : chaque abeille pointe
-## simplement vers l'un des trois matériaux partagés.
-func set_pollen_from(flower: Flower) -> void:
-	for p in _pollen:
-		p.material_override = flower.pollen_material
-
-## Met à jour les pelotes selon le remplissage de l'abeille (entre 0 et 1).
-## À appeler après chaque récolte (FORAGE) et après le déchargement (UNLOAD).
-func update_pollen() -> void:
-	var ratio := clampf(nectar / simulation.forage_capacity, 0.0, 1.0)
-
-	# Un tween précédent encore actif écraserait la nouvelle taille
-	if _pollen_tween != null and _pollen_tween.is_valid():
-		_pollen_tween.kill()
-
-	# Abeille vide : pelotes masquées, sans animation
-	if ratio <= 0.0:
-		for p in _pollen:
-			p.visible = false
-		return
-
-	# Fraction de la taille maximale correspondant à la charge
-	var factor := lerpf(POLLEN_MIN_SCALE, 1.0, ratio)
-	_pollen_tween = create_tween().set_parallel()
-	for i in _pollen.size():
-		var p := _pollen[i]
-		var full := _pollen_full_scale[i]
-		# Première apparition : la pelote part de la moitié de la taille minimale
-		if not p.visible:
-			p.scale = full * POLLEN_MIN_SCALE * 0.5
-			p.visible = true
-		_pollen_tween.tween_property(p, "scale", full * factor, POLLEN_GROW_TIME)
-	
-## Avance l'animation à chaque frame près de la caméra, toutes les ANIM_FAR_STEP frames
-## au-delà. Le temps accumulé est rattrapé d'un coup : la vitesse reste juste,
-## seule la fluidité baisse, ce qui ne se voit pas de loin.
-func _process(delta: float) -> void:
-	_anim_accum += delta
-	var step := 1
-	var cam := get_viewport().get_camera_3d()
-	if cam != null and cam.global_position.distance_squared_to(global_position) > ANIM_NEAR * ANIM_NEAR:
-		step = ANIM_FAR_STEP
-	if (Engine.get_process_frames() + _anim_offset) % step != 0:
-		return
-	_anim.advance(_anim_accum)
-	_anim_accum = 0.0
-
-# =============================================================================
-# Source connue (appelé par les états)
-# =============================================================================
-
-## Mémorise [param flower] comme source. [param dancer] : danseuse suivie en WATCH,
-## null pour une source trouvée en exploration. La rentabilité est inconnue
-## tant que la source n'a pas été évaluée au déchargement.
-func learn_source(flower: Flower, dancer: Bee = null) -> void:
-	known_flower = flower
-	known_profitability = 0.0
-	recruited_by = dancer
-
-## Oublie la source connue (vide, ou jugée trop peu rentable).
-func forget_source() -> void:
-	known_flower = null
-	known_profitability = 0.0
-	recruited_by = null
-	
-# =============================================================================
-# Utilitaires internes
-# =============================================================================
-	
-## Avance d'au plus [param step] vers [param target], en s'orientant progressivement
-## dans la direction du mouvement avec [param up] comme vecteur haut.
-## [param step] est déjà multiplié par delta ; [param delta] sert à la rotation.
-func _move_towards(target: Vector3, step: float, up: Vector3, delta: float) -> void:
-	var to_target := target - global_position
-	# Presque sur la cible : on finit d'avancer sans tourner, car la direction
-	# d'un vecteur quasi nul n'a pas de sens pour l'orientation
-	if to_target.length_squared() >= 0.000001:
-		_face(to_target, up, delta)
-	# move_toward ne dépasse jamais la cible : pas d'oscillation à l'arrivée,
-	# et la cible est atteinte exactement
-	global_position = global_position.move_toward(target, step)
-	
-## [param max_rate] : vitesse angulaire maximale (rad/s). INF = lissage seul (marche).
-func _face(direction: Vector3, up: Vector3, delta: float, max_rate := INF) -> void:
-	var dir := direction.normalized()
-	# Basis.looking_at échoue si la direction est parallèle au vecteur haut
-	# (vol vertical, ou cible hors du plan du cadre) : on prend alors un vecteur de secours
-	if absf(dir.dot(up)) > 0.99:
-		up = Vector3.FORWARD if absf(dir.dot(Vector3.UP)) > 0.99 else Vector3.UP
-
-	# Orientation visée. true : +Z comme avant du modèle au lieu de -Z (convention Godot)
-	var target_rot := Basis.looking_at(dir, up, true).get_rotation_quaternion()
-	var current_rot := global_basis.get_rotation_quaternion()
-
-	# Interpolation indépendante du framerate : 1 - exp(-k·delta) donne la même
-	# vitesse de rotation à 30 ou à 144 images par seconde
-	var weight := 1.0 - exp(-simulation.turn_speed * delta)
-	# Le lissage exponentiel seul tourne d'autant plus vite que l'écart est grand :
-	# on plafonne la vitesse angulaire pour éviter les coups secs.
-	# angle_to renvoie l'angle de rotation entre les deux orientations (0 à π).
-	var angle := current_rot.angle_to(target_rot)
-	if angle > 0.0001:
-		weight = minf(weight, max_rate * delta / angle)
-
-	# On travaille en quaternions (rotation seule), puis on réapplique l'échelle
-	# du nœud pour ne pas la perdre si l'abeille est mise à l'échelle dans bee.tscn
-	var s := global_basis.get_scale()
-	global_basis = Basis(current_rot.slerp(target_rot, weight)) * Basis.from_scale(s)
-
 ## Incline le modèle dans les virages, proportionnellement à la vitesse de lacet.
 ## Purement visuel : la trajectoire n'est pas modifiée.
 func _update_bank(delta: float) -> void:
@@ -695,7 +724,81 @@ func _update_bank(delta: float) -> void:
 
 	# Rotation autour de l'axe avant (+Z) de Bee, appliquée par-dessus l'orientation d'origine
 	_model.transform.basis = Basis(Vector3.BACK, _bank) * _model_base_basis
-	
+
 	# Même rotation autour de l'axe avant de Bee, atténuée pour la caméra.
 	# Seule l'orientation change : la position de l'œil reste celle réglée dans bee.tscn.
 	_camera_anchor.transform.basis = Basis(Vector3.BACK, _bank * CAMERA_BANK_FACTOR) * _camera_anchor_base_basis
+
+# --- Orientation ---
+
+## Avance d'au plus [param step] vers [param target], en s'orientant progressivement
+## dans la direction du mouvement avec [param up] comme vecteur haut.
+## [param step] est déjà multiplié par delta ; [param delta] sert à la rotation.
+func _move_towards(target: Vector3, step: float, up: Vector3, delta: float) -> void:
+	var to_target := target - global_position
+	# Presque sur la cible : on finit d'avancer sans tourner, car la direction
+	# d'un vecteur quasi nul n'a pas de sens pour l'orientation
+	if to_target.length_squared() >= 0.000001:
+		_face(to_target, up, delta)
+	# move_toward ne dépasse jamais la cible : pas d'oscillation à l'arrivée,
+	# et la cible est atteinte exactement
+	global_position = global_position.move_toward(target, step)
+
+## [param max_rate] : vitesse angulaire maximale (rad/s). INF = lissage seul (marche).
+func _face(direction: Vector3, up: Vector3, delta: float, max_rate := INF) -> void:
+	var dir := direction.normalized()
+	# Basis.looking_at échoue si la direction est parallèle au vecteur haut
+	# (vol vertical, ou cible hors du plan du cadre) : on prend alors un vecteur de secours
+	if absf(dir.dot(up)) > 0.99:
+		up = Vector3.FORWARD if absf(dir.dot(Vector3.UP)) > 0.99 else Vector3.UP
+
+	# Orientation visée. true : +Z comme avant du modèle au lieu de -Z (convention Godot)
+	var target_rot := Basis.looking_at(dir, up, true).get_rotation_quaternion()
+	var current_rot := global_basis.get_rotation_quaternion()
+
+	# Interpolation indépendante du framerate : 1 - exp(-k·delta) donne la même
+	# vitesse de rotation à 30 ou à 144 images par seconde
+	var weight := 1.0 - exp(-simulation.turn_speed * delta)
+	# Le lissage exponentiel seul tourne d'autant plus vite que l'écart est grand :
+	# on plafonne la vitesse angulaire pour éviter les coups secs.
+	# angle_to renvoie l'angle de rotation entre les deux orientations (0 à π).
+	# (gap et non angle : angle est déjà une variable membre de Bee)
+	var gap := current_rot.angle_to(target_rot)
+	if gap > 0.0001:
+		weight = minf(weight, max_rate * delta / gap)
+
+	# On travaille en quaternions (rotation seule), puis on réapplique l'échelle
+	# du nœud pour ne pas la perdre si l'abeille est mise à l'échelle dans bee.tscn
+	var s := global_basis.get_scale()
+	global_basis = Basis(current_rot.slerp(target_rot, weight)) * Basis.from_scale(s)
+
+# --- Son ---
+
+## Allume, fond et coupe le bourdonnement individuel. L'abeille bourdonne dehors
+## tant qu'elle bat des ailes :
+##   - en vol : vitesse non nulle, de la fin du décollage jusqu'au land() de la pose
+##     (approche finale et stationnaire devant la fleur compris) ;
+##   - au décollage, où la vitesse est encore nulle : animation _bee_takeoff ;
+##   - posée mais en stationnaire (ForageState, prélèvement refusé) : animation _bee_hover.
+## Dans la ruche, le son individuel reste coupé : le bourdonnement collectif de Hive le remplace.
+func _update_buzz(delta: float) -> void:
+	# La vitesse seule ne suffit pas : nulle pendant tout le décollage.
+	# L'animation seule non plus : _bee_landing n'est pas bouclée et peut finir
+	# pendant le stationnaire devant la fleur, ailes encore battantes.
+	var flapping := current_state is FieldState \
+			and (not is_landed() or _anim.current_animation in WING_ANIMS)
+	var target_db := _buzz_on_db if flapping else BUZZ_OFF_DB
+
+	# Début du battement : on part du silence, à un point aléatoire de la boucle
+	# pour que les abeilles ne bourdonnent pas en phase
+	if flapping and not _buzz.playing:
+		_buzz.volume_db = BUZZ_OFF_DB
+		_buzz.play(randf() * _buzz.stream.get_length())
+
+	if _buzz.playing:
+		# Fondu indépendant de la fréquence d'images (même formule que pour l'orientation)
+		var w := 1.0 - exp(-BUZZ_FADE_SPEED * delta)
+		_buzz.volume_db = lerpf(_buzz.volume_db, target_db, w)
+		# Ailes au repos et son quasi éteint : on libère le lecteur
+		if not flapping and _buzz.volume_db < BUZZ_OFF_DB + 1.0:
+			_buzz.stop()

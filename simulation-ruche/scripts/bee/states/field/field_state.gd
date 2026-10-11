@@ -139,6 +139,17 @@ var _hover_phase := Vector3.ZERO
 var _arrival_dir := Vector3.ZERO
 
 # =============================================================================
+# Transitions communes au super-état
+# =============================================================================
+
+## La nuit tombée, toute abeille dehors rentre à la ruche, quel que soit son état.
+## RETURN et FORAGE redéfinissent cette méthode (voir leurs scripts).
+func interrupt() -> BeeState:
+	if not bee.simulation.is_daytime():
+		return bee.return_home
+	return null
+
+# =============================================================================
 # Décollage
 # =============================================================================
 

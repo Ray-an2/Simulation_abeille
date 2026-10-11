@@ -131,6 +131,9 @@ func update(delta: float) -> BeeState:
 			# Décollage. Le passage à un état Dehors démarre le bourdonnement
 			# individuel (Bee.change_state).
 			if _walk_straight_to(_takeoff, delta):
+				# Nuit tombée pendant la sortie : elle rentre sans décoller
+				if not bee.simulation.is_daytime():
+					return bee.enter_hive
 				return _next
 
 	return null

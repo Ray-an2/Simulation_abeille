@@ -126,3 +126,11 @@ func _walk_through_tunnel(tunnel_end: Vector3, delta: float) -> bool:
 func _walk_straight_to(target: Vector3, delta: float) -> bool:
 	_walk_straight(target, _wander_speed(delta), delta)
 	return bee.is_near(target, EXACT_RADIUS)
+	
+## Sortie vers [param next] (GO ou SCOUT) en passant par la planche d'envol,
+## seulement de jour. La nuit, l'abeille reste en IDLE ; elle garde known_flower
+## en mémoire et pourra y retourner au matin (voir IdleState).
+func go_out_if_day(next: BeeState) -> BeeState:
+	if bee.simulation.is_daytime():
+		return bee.leave_hive.then(next)
+	return bee.idle

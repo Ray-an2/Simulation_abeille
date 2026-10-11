@@ -28,3 +28,9 @@ func update(delta: float) -> BeeState:
 	if update_landing(_landing_spot, Vector3.UP, HOVER_TIME_BOARD, delta, 0.0, _approach_dir):
 		return bee.enter_hive
 	return null
+
+## Déjà en train de rentrer : on neutralise la règle du super-état.
+## Sans cette surcharge, RETURN serait relancé à chaque image
+## (exit/enter en boucle) et l'abeille n'arriverait jamais.
+func interrupt() -> BeeState:
+	return null

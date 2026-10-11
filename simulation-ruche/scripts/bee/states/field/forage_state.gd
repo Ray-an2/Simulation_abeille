@@ -41,6 +41,15 @@ func exit() -> void:
 		# La fleur redevient visible pour les autres abeilles
 		_flower.release(bee)
 	_flower = null
+	
+## Un prélèvement en cours verrouille la fleur (BUSY) : on le laisse finir.
+## _harvest_done aussi, sinon le nectar du dernier prélèvement serait perdu :
+## interrupt() passe avant update(), qui est l'endroit où il est ajouté au jabot.
+## Entre deux prélèvements, la règle du super-état s'applique (nuit → RETURN).
+func interrupt() -> BeeState:
+	if _foraging or _harvest_done:
+		return null
+	return super()
 
 func update(_delta: float) -> BeeState:
 	# Fleur disparue : retour à la ruche

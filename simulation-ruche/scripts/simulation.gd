@@ -83,6 +83,10 @@ class_name Simulation extends Node3D
 ## Durée maximale (s) de butinage sur une fleur.
 @export var foraging_time_max := 5.0
 
+## Probabilité par seconde qu'une abeille en IDLE qui connaît une source
+## y retourne d'elle-même (reprise du matin après la nuit).
+@export var p_reactivate: float = 0.02
+
 @export_group("Danse")
 
 ## Durée de danse (s) pour une source de rentabilité 1.

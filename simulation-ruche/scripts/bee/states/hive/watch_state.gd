@@ -109,7 +109,7 @@ func update(delta: float) -> BeeState:
 		# learn_source() retient aussi la danseuse (chaîne de recrutement) et remet
 		# la rentabilité à zéro : inconnue tant que le trajet n'est pas fait, UNLOAD l'évaluera
 		bee.learn_source(hive.get_dance_flower(_dancer), _dancer)
-		return bee.leave_hive.then(bee.go)
+		return go_out_if_day(bee.go)
 
 	_move_to_slot(delta)
 	return null

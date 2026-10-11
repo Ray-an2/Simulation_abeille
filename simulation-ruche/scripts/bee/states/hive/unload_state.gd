@@ -80,10 +80,10 @@ func update(delta: float) -> BeeState:
 			return bee.dance
 		# Trop de monde à la ruche : elle repart sans danser.
 		# Sortie à pied jusqu'à la planche, puis vol vers la source.
-		return bee.leave_hive.then(bee.go)
+		return go_out_if_day(bee.go)
 	if verdict == 0:
 		# Source moyenne : elle y retourne sans danser, en passant par la planche
-		return bee.leave_hive.then(bee.go)
+		return go_out_if_day(bee.go)
 
 	# Source mauvaise ou vide : l'abeille l'oublie
 	bee.forget_source()

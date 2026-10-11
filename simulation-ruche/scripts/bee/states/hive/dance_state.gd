@@ -225,14 +225,14 @@ func update(delta: float) -> BeeState:
 				_stop_wiggle()
 				# Une course n'est jamais interrompue : la fin est testée après
 				if _remaining <= 0.0:
-					return bee.leave_hive.then(bee.go)
+					return go_out_if_day(bee.go)
 				_start_loop()
 
 		Phase.LOOP:
 			_remaining -= delta
 			# Temps écoulé pendant la boucle : l'abeille quitte la piste sans la finir
 			if _remaining <= 0.0:
-				return bee.leave_hive.then(bee.go)
+				return go_out_if_day(bee.go)
 			# hop_towards et non walk_towards : le point visé n'est qu'à une fraction
 			# de mm devant l'abeille, et _move_towards() ne l'oriente plus en dessous
 			# de 1 mm. Elle reculerait sans tourner. On impose donc la tangente.
