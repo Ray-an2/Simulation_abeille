@@ -1,10 +1,10 @@
 class_name BeeOverlay extends Control
 ## Surcouche 2D au-dessus du rendu 3D : un marqueur à l'écran pour chaque abeille,
-## une infobulle avec ses données pour l'abeille survolée ou épinglée, et en vue
-## abeille un panneau fixe avec les données de l'abeille suivie.
+## et une infobulle avec ses données pour l'abeille survolée ou épinglée.
+## En vue abeille, le tableau de bord (BeeHud) prend le relais pour l'abeille suivie.
 ##
 ## M : afficher / masquer les marqueurs.
-## I : activer / désactiver les infobulles et le panneau de la vue abeille.
+## I : activer / désactiver les infobulles et le tableau de bord de la vue abeille.
 ## Clic gauche (infobulles actives) : épingler l'abeille sous le curseur, ou désépingler.
 ##
 ## À placer sous un CanvasLayer dont le layer est supérieur à celui du filtre
@@ -30,7 +30,7 @@ const STATE_COLORS := {
 ## Couleur des états absents de STATE_COLORS : repère visuel d'un état oublié.
 const UNKNOWN_STATE_COLOR := Color.MAGENTA
 
-## Fond des cadres de texte (infobulle et panneau de la vue abeille).
+## Fond du cadre de l'infobulle.
 const BOX_COLOR := Color(0.0, 0.0, 0.0, 0.75)
 
 # =============================================================================
@@ -72,21 +72,13 @@ const BOX_COLOR := Color(0.0, 0.0, 0.0, 0.75)
 ## Marge intérieure (px) des cadres de texte.
 @export var padding := 6.0
 
-@export_group("Vue abeille")
-
-## Taille de police (px) du panneau de l'abeille suivie.
-@export var hud_font_size := 16
-
-## Distance (px) entre le panneau et le coin haut gauche de l'écran.
-@export var hud_margin := 12.0
-
 @export_group("Touches")
 
 ## Touche qui affiche / masque les marqueurs. Comparée à la lettre produite
 ## selon la disposition du clavier : M est bien la touche M en AZERTY.
 @export var markers_key: Key = KEY_M
 
-## Touche qui active / désactive les infobulles et le panneau de la vue abeille.
+## Touche qui active / désactive les infobulles et le tableau de bord de la vue abeille.
 @export var info_key: Key = KEY_I
 
 # =============================================================================
@@ -94,7 +86,8 @@ const BOX_COLOR := Color(0.0, 0.0, 0.0, 0.75)
 # =============================================================================
 
 ## Abeille suivie par la caméra en vue abeille, null dans les vues fixes.
-## Renseignée par CameraSwitcher à chaque changement de vue ou d'abeille.
+## Renseignée par CameraSwitcher à chaque changement de vue ou d'abeille,
+## lue par BeeHud pour son tableau de bord.
 var followed_bee: Bee = null
 
 # =============================================================================
@@ -103,7 +96,7 @@ var followed_bee: Bee = null
 
 ## Marqueurs et infobulles masqués au lancement : on les active avec les touches.
 var _markers_enabled := false
-var _info_enabled := true
+var _info_enabled := false
 
 ## Abeille épinglée par un clic : son infobulle reste affichée même sans survol.
 var _pinned: Bee = null
@@ -162,8 +155,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		queue_redraw()
 
 # =============================================================================
-# Sélection (aussi utilisée par CameraSwitcher)
+# Sélection (aussi utilisée par CameraSwitcher et BeeHud)
 # =============================================================================
+
+## Infobulles actives (touche I). Le tableau de bord de la vue abeille suit la même touche.
+func is_info_enabled() -> bool:
+	return _info_enabled
+
 
 ## Abeille épinglée par un clic, ou null. Permet à CameraSwitcher de passer
 ## en vue abeille directement sur l'abeille choisie.
@@ -243,17 +241,12 @@ func _draw() -> void:
 	if not _info_enabled:
 		return
 
-	# --- Panneau de l'abeille suivie (vue abeille uniquement) ---
-	var followed: Bee = followed_bee if is_instance_valid(followed_bee) else null
-	if followed != null:
-		_draw_box("Abeille suivie\n" + _bee_info(followed),
-				Vector2(hud_margin, hud_margin), hud_font_size)
-
 	# --- Infobulle ---
+	var followed: Bee = followed_bee if is_instance_valid(followed_bee) else null
 	# Abeille épinglée en priorité, sinon celle survolée par la souris
 	var shown: Bee = _pinned if is_instance_valid(_pinned) \
 			else _bee_at(get_local_mouse_position())
-	# Pas d'infobulle pour l'abeille suivie : le panneau affiche déjà ses données.
+	# Pas d'infobulle pour l'abeille suivie : le tableau de bord affiche déjà ses données.
 	# Abeille épinglée hors champ : pas d'infobulle, elle revient quand l'abeille réapparaît
 	if shown == null or shown == followed or not _screen_positions.has(shown):
 		return
