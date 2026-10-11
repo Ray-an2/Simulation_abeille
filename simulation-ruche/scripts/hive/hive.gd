@@ -389,6 +389,44 @@ func deposit(amount: float) -> void:
 # =============================================================================
 # Danses (boucle positive : recrutement)
 # =============================================================================
+# À coller dans hive.gd, à la place de la section « Danses » actuellement vide.
+
+## Danses en cours : danseuse → source annoncée.
+## Tenue à jour par DanceState : start_dance() à l'arrivée sur la piste,
+## stop_dance() à la sortie de l'état (fin normale ou interruption).
+var _dances: Dictionary[Bee, Flower] = {}
+
+## Déclare que [param bee] danse pour [param flower].
+func start_dance(bee: Bee, flower: Flower) -> void:
+	_dances[bee] = flower
+
+## Retire la danse de [param bee]. Sans effet si elle ne dansait pas.
+func stop_dance(bee: Bee) -> void:
+	_dances.erase(bee)
+
+## true tant que [param bee] danse. Sert à WATCH : une danse finie avant
+## watch_min_duration renvoie la suiveuse en IDLE.
+func is_dancing(bee: Bee) -> bool:
+	return _dances.has(bee)
+
+## Source annoncée par [param bee], ou null si elle ne danse pas.
+## WATCH la copie dans known_flower de la suiveuse.
+func get_dance_flower(bee: Bee) -> Flower:
+	return _dances.get(bee, null)
+
+## Nombre de danses en cours (statistiques, interface).
+func get_dance_count() -> int:
+	return _dances.size()
+
+## Danseuses à moins de [param radius] de [param pos].
+## Peu de danseuses à la fois : un simple parcours suffit, sans grille.
+func get_dancers_near(pos: Vector3, radius: float) -> Array[Bee]:
+	var result: Array[Bee] = []
+	for dancer: Bee in _dances:
+		# Abeille supprimée en pleine danse : exit() n'a pas été appelée
+		if is_instance_valid(dancer) and dancer.is_near(pos, radius):
+			result.append(dancer)
+	return result
 
 # =============================================================================
 # Présence des abeilles (appelé par Bee)

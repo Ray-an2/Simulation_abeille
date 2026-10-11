@@ -68,6 +68,12 @@ const POLLEN_MIN_SCALE := 0.3
 ## Tween en cours sur les pelotes, pour l'interrompre si la charge change de nouveau.
 var _pollen_tween: Tween
 
+## Échelle de chaque pelote réglée dans bee.tscn : c'est sa taille maximale.
+## update_pollen() en applique une fraction. Sans elle, le tween écraserait
+## l'échelle de l'éditeur (×1000, pour compenser celle du squelette)
+## et les pelotes deviendraient invisibles.
+var _pollen_full_scale: Array[Vector3] = []
+
 # =============================================================================
 # Références injectées par Simulation
 # =============================================================================
@@ -130,6 +136,10 @@ var known_flower: Flower = null
 ## Rentabilité de [member known_flower] (entre 0 et 1), évaluée en UNLOAD.
 ## Détermine la transition suivante (DANCE, GO ou IDLE) et la durée de la danse.
 var known_profitability: float = 0.0
+
+## Danseuse dont l'abeille a appris sa source en WATCH ; null si elle l'a trouvée
+## elle-même en exploration, ou si elle ne connaît aucune source.
+var recruited_by: Bee = null
 
 ## Durée du trajet en cours hors de la ruche
 var trip_time: float = 0.0
@@ -230,6 +240,10 @@ func _ready() -> void:
 	_anim_offset = randi() % ANIM_FAR_STEP
 	
 	_avoid_side = 1.0 if randf() < 0.5 else -1.0
+	
+	# Taille maximale des pelotes : celle réglée dans bee.tscn
+	for p in _pollen:
+		_pollen_full_scale.append(p.scale)
 	
 	# Abeille vide au départ : pelotes masquées
 	update_pollen()
@@ -565,14 +579,17 @@ func update_pollen() -> void:
 			p.visible = false
 		return
 
-	var target := Vector3.ONE * lerpf(POLLEN_MIN_SCALE, 1.0, ratio)
+	# Fraction de la taille maximale correspondant à la charge
+	var factor := lerpf(POLLEN_MIN_SCALE, 1.0, ratio)
 	_pollen_tween = create_tween().set_parallel()
-	for p in _pollen:
+	for i in _pollen.size():
+		var p := _pollen[i]
+		var full := _pollen_full_scale[i]
 		# Première apparition : la pelote part de la moitié de la taille minimale
 		if not p.visible:
-			p.scale = Vector3.ONE * POLLEN_MIN_SCALE * 0.5
+			p.scale = full * POLLEN_MIN_SCALE * 0.5
 			p.visible = true
-		_pollen_tween.tween_property(p, "scale", target, POLLEN_GROW_TIME)
+		_pollen_tween.tween_property(p, "scale", full * factor, POLLEN_GROW_TIME)
 	
 ## Avance l'animation à chaque frame près de la caméra, toutes les ANIM_FAR_STEP frames
 ## au-delà. Le temps accumulé est rattrapé d'un coup : la vitesse reste juste,
@@ -587,6 +604,24 @@ func _process(delta: float) -> void:
 		return
 	_anim.advance(_anim_accum)
 	_anim_accum = 0.0
+
+# =============================================================================
+# Source connue (appelé par les états)
+# =============================================================================
+
+## Mémorise [param flower] comme source. [param dancer] : danseuse suivie en WATCH,
+## null pour une source trouvée en exploration. La rentabilité est inconnue
+## tant que la source n'a pas été évaluée au déchargement.
+func learn_source(flower: Flower, dancer: Bee = null) -> void:
+	known_flower = flower
+	known_profitability = 0.0
+	recruited_by = dancer
+
+## Oublie la source connue (vide, ou jugée trop peu rentable).
+func forget_source() -> void:
+	known_flower = null
+	known_profitability = 0.0
+	recruited_by = null
 	
 # =============================================================================
 # Utilitaires internes

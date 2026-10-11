@@ -86,8 +86,7 @@ func update(delta: float) -> BeeState:
 		return bee.leave_hive.then(bee.go)
 
 	# Source mauvaise ou vide : l'abeille l'oublie
-	bee.known_flower = null
-	bee.known_profitability = 0.0
+	bee.forget_source()
 	return bee.idle
 
 

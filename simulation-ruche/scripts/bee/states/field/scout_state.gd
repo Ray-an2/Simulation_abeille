@@ -99,7 +99,11 @@ func update(delta: float) -> BeeState:
 		# Approche, stationnaire puis pose, à vitesse de recherche
 		if update_landing(_target, _flower.get_landing_normal(), HOVER_TIME_FLOWER,
 				delta, bee.simulation.scout_speed, Vector3.ZERO, bee.get_head_offset()):
-			bee.known_flower = _flower
+			# Source déjà connue : l'abeille vient de GO (fleur réservée) et se rabat
+			# sur une voisine. Elle reste recrutée par la même danseuse.
+			# Sinon, c'est une vraie découverte en exploration.
+			var dancer := bee.recruited_by if is_instance_valid(bee.known_flower) else null
+			bee.learn_source(_flower, dancer)
 			return bee.forage
 	else:
 		_remaining -= delta

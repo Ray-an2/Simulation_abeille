@@ -90,11 +90,11 @@ class_name Simulation extends Node3D
 
 ## Durée de danse (s) pour une source de rentabilité 1.
 ## La durée réelle est proportionnelle à la rentabilité (boucle de recrutement).
-@export var dance_duration_max: float = 10.0
+@export var dance_duration_max: float = 60.0
 
 ## Temps (s) qu'une abeille doit suivre une danse pour mémoriser la source.
 ## Si la danse s'arrête avant, l'abeille retourne en IDLE.
-@export var watch_min_duration: float = 2.0
+@export var watch_min_duration: float = 12.0
 
 ## Rentabilité au-dessus de laquelle l'abeille danse après déchargement.
 @export_range(0.0, 1.0) var profitability_high: float = 0.6

@@ -47,8 +47,7 @@ func update(delta: float) -> BeeState:
 	if is_on_final_approach():
 		# Fleur vide constatée de près : on l'oublie et on explore, toujours en vol
 		if flower.is_empty():
-			bee.known_flower = null
-			bee.known_profitability = 0.0
+			bee.forget_source()
 			return bee.scout
 		# Fleur réservée par une autre abeille : on cherche une voisine libre.
 		# La source reste connue : SCOUT la remplacera si l'abeille se pose ailleurs.
