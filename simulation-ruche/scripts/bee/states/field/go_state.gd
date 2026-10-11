@@ -1,6 +1,6 @@
 class_name GoState extends FieldState
-## Vol vers la source connue. Si la fleur est vide, l'abeille le constate pendant
-## le stationnaire et repart explorer sans se poser ; sinon elle se pose et butine.
+## Vol vers la source connue. Si la fleur est vide, l'abeille le constate en approche
+## finale et repart explorer sans se poser ; sinon elle se pose et butine.
 
 ## Position de la fleur visée
 var _target: Vector3
@@ -17,16 +17,16 @@ func update(delta: float) -> BeeState:
 	if not is_instance_valid(flower):
 		return bee.scout
 
-	if update_takeoff(delta):
+	if update_takeoff(_target, delta):
 		return null
 
-	# Fleur vide constatée au stationnaire : on l'oublie et on explore, toujours en vol
-	if is_hovering() and flower.is_empty():
+	# Fleur vide constatée de près : on l'oublie et on explore, toujours en vol
+	if is_on_final_approach() and flower.is_empty():
 		bee.known_flower = null
 		bee.known_profitability = 0.0
 		return bee.scout
 
-	# Approche, stationnaire puis pose sur le pistil
+	# Approche, arrêt bref puis pose sur le pistil
 	if update_landing(_target, flower.get_landing_normal(), HOVER_TIME_FLOWER, delta):
 		return bee.forage
 	return null

@@ -67,7 +67,7 @@ func enter() -> void:
 
 
 func update(delta: float) -> BeeState:
-	if update_takeoff(delta): return null
+	if update_takeoff(_segment_end, delta): return null
 	
 	_update_flower_search()
 

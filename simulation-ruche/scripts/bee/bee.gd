@@ -469,6 +469,21 @@ func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, de
 	# move_toward ne dépasse jamais la cible : arrivée exacte
 	global_position = global_position.move_toward(target, speed * delta)
 
+## Vitesse de vol courante (m/s). Lue par FieldState pour enchaîner sans rupture
+## entre fly_towards() et ses phases de décollage et d'approche finale.
+func get_flight_speed() -> float:
+	return _flight_speed
+
+## Impose la vitesse de vol courante. Appelée par FieldState à la fin du décollage
+## et pendant l'approche finale, pour que fly_towards() reparte de la bonne vitesse.
+func set_flight_speed(speed: float) -> void:
+	_flight_speed = speed
+
+## Met [param anim_name] en file d'attente : elle démarrera à la fin de l'animation en cours
+## (qui ne doit donc pas être bouclée). Sert à enchaîner _bee_takeoff puis _bee_hover.
+func queue_animation(anim_name: StringName) -> void:
+	_anim.queue(anim_name)
+
 ## Remet la vitesse de vol à zéro. À appeler dès que l'abeille est posée
 ## (fleur, planche d'envol) : le prochain vol repartira d'un décollage.
 func land() -> void:
@@ -500,6 +515,9 @@ func play_walk(speed_factor: float) -> void:
 ## Joue [param anim_name] depuis un point aléatoire, pour que les abeilles
 ## ne battent pas des ailes en parfaite synchronisation.
 func play_animation(anim_name: StringName) -> void:
+	# Toute demande explicite annule la file : sans ça, un _bee_hover mis en file
+	# au décollage pourrait démarrer après _bee_landing si le vol est très court
+	_anim.clear_queue()
 	_anim.speed_scale = 1.0
 	if _anim.current_animation == anim_name:
 		return
