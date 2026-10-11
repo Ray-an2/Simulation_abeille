@@ -63,15 +63,18 @@ func enter() -> void:
 	_flower = null
 	_heading = _departure_heading()
 	_pick_segment()
+	begin_flight()
 
 
 func update(delta: float) -> BeeState:
+	if update_takeoff(delta): return null
+	
 	_update_flower_search()
 
 	if _flower != null:
-		# Approche de la fleur : arrêt dessus (arrive = true), à vitesse de recherche
-		bee.fly_towards(_target, delta, true, bee.simulation.scout_speed)
-		if bee.is_near(_target, bee.simulation.arrival_radius):
+		# Approche, stationnaire puis pose, à vitesse de recherche
+		if update_landing(_target, _flower.get_landing_normal(), HOVER_TIME_FLOWER,
+				delta, bee.simulation.scout_speed):
 			bee.known_flower = _flower
 			return bee.forage
 	else:
@@ -90,6 +93,7 @@ func update(delta: float) -> BeeState:
 func _update_flower_search() -> void:
 	if _flower != null and _flower.is_empty():
 		_flower = null
+		reset_landing()
 
 	if _flower == null:
 		_flower = _find_flower()

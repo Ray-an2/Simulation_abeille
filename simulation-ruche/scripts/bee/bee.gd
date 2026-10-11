@@ -43,12 +43,6 @@ const ANIM_NEAR := 0.5
 ## Au-delà de ANIM_NEAR : une mise à jour de l'animation toutes les N frames.
 const ANIM_FAR_STEP := 4
 
-## Temps accumulé depuis la dernière mise à jour de l'animation.
-var _anim_accum := 0.0
-
-## Décalage propre à chaque abeille : elles ne sont pas toutes mises à jour à la même frame.
-var _anim_offset := 0
-
 # =============================================================================
 # Pelotes de pollen (indicateur visuel de charge)
 # =============================================================================
@@ -147,6 +141,15 @@ var _model_base_basis: Basis
 ## Orientation d'origine du marqueur dans bee.tscn.
 var _camera_anchor_base_basis: Basis
 
+## Normale de la surface sur laquelle l'abeille est posée ; Vector3.ZERO quand elle vole.
+var surface_normal: Vector3 = Vector3.ZERO
+
+## Temps accumulé depuis la dernière mise à jour de l'animation.
+var _anim_accum := 0.0
+
+## Décalage propre à chaque abeille : elles ne sont pas toutes mises à jour à la même frame.
+var _anim_offset := 0
+
 # =============================================================================
 # États
 # =============================================================================
@@ -242,6 +245,8 @@ func change_state(next: BeeState) -> void:
 	# Super-état avant / après : seul un passage Ruche ↔ Dehors nous intéresse
 	var was_inside := current_state is HiveState   # false au premier appel (null)
 	var is_inside := next is HiveState
+	
+	surface_normal = hive.get_comb_normal()
 
 	if current_state != null:
 		current_state.exit()
@@ -343,6 +348,26 @@ func fly_towards(target: Vector3, delta: float, arrive := true, max_speed := 0.0
 		global_position.y = floor_y
 	
 	_update_bank(delta)
+
+## Vol vers `target` à la vitesse `speed`, le haut de l'abeille ramené progressivement vers `up`.
+func fly_towards_at(target: Vector3, speed: float, up: Vector3, delta: float) -> void:
+	var dir := target - global_position
+	global_position = global_position.move_toward(target, speed * delta)
+	orient(dir, up, delta)
+
+## Oriente l'abeille face à `forward` (projeté dans le plan perpendiculaire à `up`), haut sur `up`.
+func orient(forward: Vector3, up: Vector3, delta: float) -> void:
+	forward -= up * forward.dot(up)
+	if forward.length_squared() < 1e-8:
+		# Direction parallèle à la normale (descente finale) : on garde le cap actuel.
+		forward = -global_basis.z - up * (-global_basis.z).dot(up)
+	if forward.length_squared() < 1e-8:
+		# Cap lui-même parallèle à la normale : on prend l'ancien haut projeté.
+		forward = global_basis.y - up * global_basis.y.dot(up)
+	var target_q := Basis.looking_at(forward.normalized(), up).get_rotation_quaternion()
+	var w := 1.0 - exp(-simulation.turn_speed * delta)   # même lissage que _move_towards
+	var s := global_basis.get_scale()                     # suppose une échelle uniforme
+	global_basis = Basis(global_basis.get_rotation_quaternion().slerp(target_q, w)).scaled(s)
 
 ## Hauteur du terrain sous [param pos], ou -INF si inconnue
 ## (pas de terrain assigné, trou dans le terrain, hors de la carte).
@@ -452,6 +477,11 @@ func land() -> void:
 	_prev_forward = Vector3.ZERO   # pas de lacet mesuré au prochain décollage
 	_model.transform.basis = _model_base_basis
 	_camera_anchor.transform.basis = _camera_anchor_base_basis
+
+## true si l'abeille est posée : land() a remis sa vitesse de vol à zéro
+## et aucun vol n'a repris depuis. FieldState s'en sert pour décider d'un décollage.
+func is_landed() -> bool:
+	return is_zero_approx(_flight_speed)
 	
 # =============================================================================
 # Animation (appelé par les états)

@@ -4,6 +4,13 @@ class_name Simulation extends Node3D
 ## Tous les paramètres sont exportés : on peut les modifier pendant l'exécution
 ## via l'onglet Distant de l'arbre de scène, pour régler les boucles de rétroaction.
 
+
+# ============================================================
+# Paramètres réglables
+# ============================================================
+
+@export_group("Références")
+
 ## Ruche commune à toutes les abeilles. À assigner dans l'inspecteur.
 @export var hive: Hive
 
@@ -13,37 +20,45 @@ class_name Simulation extends Node3D
 ## Scène instanciée pour chaque abeille (bee.tscn). À assigner dans l'inspecteur.
 @export var bee_scene: PackedScene
 
-@export_group("Ruche")
-
-## Nombre de receveuses : abeilles prises en charge en même temps
-@export_range(1, 20) var receiver_count := 3
-
-## Durée (s) du transfert du nectar à une receveuse
-@export var unload_duration := 3.0
-
-## Attente (s) à partir de laquelle l'envie de danser est réduite au maximum
-@export var max_wait_time := 20.0
-
-## Réduction maximale de la rentabilité de danse due à l'attente (0 = aucune, 1 = totale)
-@export_range(0.0, 1.0) var wait_penalty := 0.8
-
-@export_group("Temps")
-
-## Nœud Sky3D de la scène
+## Nœud Sky3D de la scène : horloge et position du soleil.
 @export var sky: Sky3D
 
-## Durée réelle (secondes) d'une journée simulée de 24 h
-@export var day_duration_seconds := 600.0
+## Terrain3D de la scène, pour connaître la hauteur du sol sous les abeilles.
+## Si null, le sol est ignoré.
+@export var terrain: Terrain3D
 
-## Heure de départ de la simulation
-@export_range(0.0, 24.0) var start_hour := 8.0
 
 @export_group("Population")
 
 ## Nombre d'abeilles créées au lancement.
 @export_range(20, 200) var bee_count: int = 100
 
-@export_group("Comportement")
+
+@export_group("Temps")
+
+## Durée réelle (s) d'une journée simulée de 24 h.
+@export var day_duration_seconds := 600.0
+
+## Heure de départ de la simulation.
+@export_range(0.0, 24.0) var start_hour := 8.0
+
+
+@export_group("Ruche")
+
+## Nombre de receveuses : abeilles prises en charge en même temps.
+@export_range(1, 20) var receiver_count := 3
+
+## Durée (s) du transfert du nectar à une receveuse.
+@export var unload_duration := 3.0
+
+## Attente (s) à partir de laquelle l'envie de danser est réduite au maximum.
+@export var max_wait_time := 20.0
+
+## Réduction maximale de la rentabilité de danse due à l'attente (0 = aucune, 1 = totale).
+@export_range(0.0, 1.0) var wait_penalty := 0.8
+
+
+@export_group("Exploration")
 
 ## Probabilité par seconde qu'une abeille en IDLE parte explorer.
 ## À multiplier par delta dans IdleState, pour ne pas dépendre de la fréquence d'images.
@@ -51,6 +66,27 @@ class_name Simulation extends Node3D
 
 ## Rayon (unités) de la zone explorée autour de la ruche en SCOUT.
 @export var scout_radius: float = 40.0
+
+## Durée maximale (s) d'exploration en SCOUT avant de rentrer bredouille.
+@export var scout_timeout: float = 90.0
+
+## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
+@export var perception_radius: float = 15.0
+
+
+@export_group("Butinage")
+
+## Quantité de nectar qu'une abeille peut transporter. FORAGE s'arrête une fois atteinte.
+@export var forage_capacity: float = 10.0
+
+## Durée minimale (s) de butinage sur une fleur.
+@export var foraging_time_min := 4.0
+
+## Durée maximale (s) de butinage sur une fleur.
+@export var foraging_time_max := 5.0
+
+
+@export_group("Danse")
 
 ## Durée de danse (s) pour une source de rentabilité 1.
 ## La durée réelle est proportionnelle à la rentabilité (boucle de recrutement).
@@ -60,9 +96,6 @@ class_name Simulation extends Node3D
 ## Si la danse s'arrête avant, l'abeille retourne en IDLE.
 @export var watch_min_duration: float = 2.0
 
-## Durée maximale (s) d'exploration en SCOUT avant de rentrer bredouille.
-@export var scout_timeout: float = 90.0
-
 ## Rentabilité au-dessus de laquelle l'abeille danse après déchargement.
 @export_range(0.0, 1.0) var profitability_high: float = 0.6
 
@@ -70,19 +103,17 @@ class_name Simulation extends Node3D
 ## Entre les deux seuils, elle repart sans danser.
 @export_range(0.0, 1.0) var profitability_low: float = 0.2
 
-## Quantité de nectar qu'une abeille peut transporter. FORAGE s'arrête une fois atteinte.
-@export var forage_capacity: float = 10.0
-
-## Temps de butinage minimum 
-@export var foraging_time_min := 4.0
-
-## Temps de butinage maximum
-@export var foraging_time_max := 5.0
 
 @export_group("Déplacement")
 
+@export_subgroup("Vol")
+
 ## Vitesse de vol à l'extérieur (unités/s). À ajuster à l'échelle du terrain.
 @export var fly_speed: float = 7.0
+
+## Vitesse de vol en exploration (m/s) : plus lente que le transit,
+## la recherche de fleurs est visuelle.
+@export var scout_speed: float = 4.0
 
 ## Accélération (m/s²) au décollage et lors des reprises de vitesse.
 ## Avec 3 m/s², une abeille atteint 7 m/s en un peu plus de 2 s.
@@ -96,16 +127,11 @@ class_name Simulation extends Node3D
 ## vers zéro près de la cible et l'arrivée traînerait.
 @export var landing_speed: float = 0.2
 
-## Vitesse de marche sur le rayon (unités/s). À ajuster à l'échelle de la ruche.
-@export var walk_speed: float = 0.02
+@export_subgroup("Virages")
 
 ## Vitesse de rotation des abeilles (1/s). Plus la valeur est grande, plus elles
 ## s'orientent vite vers leur cible. Une valeur très grande revient à un look_at instantané.
 @export var turn_speed: float = 6.0
-
-## Vitesse de vol en exploration (m/s) : plus lente que le transit,
-## la recherche de fleurs est visuelle.
-@export var scout_speed: float = 4.0
 
 ## Vitesse angulaire maximale en vol (rad/s). Le rayon de virage vaut
 ## vitesse / max_flight_turn_rate : 0,75 m à 3 m/s, 1,75 m à 7 m/s.
@@ -115,24 +141,22 @@ class_name Simulation extends Node3D
 ## Elle ralentit le temps de virer au lieu de décrire un grand arc.
 @export_range(0.1, 1.0) var turning_speed_factor: float = 0.3
 
+@export_subgroup("Marche")
+
+## Vitesse de marche sur le rayon (unités/s). À ajuster à l'échelle de la ruche.
+@export var walk_speed: float = 0.02
+
+@export_subgroup("Arrivée")
+
 ## Distance (m) à la cible en dessous de laquelle le mouvement bascule
 ## progressivement de « droit devant » à « droit sur la cible », pour garantir l'arrivée.
 @export var homing_distance: float = 0.5
 
-## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
-@export var perception_radius: float = 15.0
-
 ## Distance (unités) en dessous de laquelle l'abeille est considérée arrivée.
 @export var arrival_radius: float = 0.05
 
-## Toutes les fleurs de la scène, collectées au lancement.
-var flowers: Array[Flower] = []
 
 @export_group("Obstacles")
-
-## Terrain3D de la scène, pour connaître la hauteur du sol sous les abeilles.
-## Si null, le sol est ignoré.
-@export var terrain: Terrain3D
 
 ## Hauteur de vol (m) au-dessus du sol, loin de la cible.
 @export var cruise_height: float = 1.0
@@ -154,44 +178,76 @@ var flowers: Array[Flower] = []
 ## Le terrain n'y est pas : il est géré par sa hauteur, plus rapide qu'un rayon.
 @export_flags_3d_physics var obstacle_mask: int = 1 << 2   # calque 3
 
+
+@export_group("Décollage / atterrissage")
+
+## Montée (m) selon la normale avant de partir.
+@export var takeoff_height: float = 0.02
+
+## Constante de temps (s) de l'approche : vitesse d'approche = distance / tau.
+@export var landing_tau: float = 1.0
+
+## Hauteur (m) du vol stationnaire avant la pose.
+@export var hover_distance: float = 0.015
+
+## Durée (s) du vol stationnaire au-dessus de la planche d'envol.
+@export var hover_time_board: float = 0.3
+
+## Durée (s) du vol stationnaire devant une fleur.
+@export var hover_time_flower: float = 1.0
+
+## Vitesse (m/s) de la descente finale, et vitesse plancher de l'approche.
+@export var touchdown_speed: float = 0.01
+
+
 @export_group("Fleur")
 
-## Ressources maximum dans une fleur
+## Quantité maximale de nectar dans une fleur.
 @export var max_resource := 100.0
 
-## Seuil de la fleur
+## Seuil de la fleur.
 @export var threshold := 20.0
 
-## Quantite de nectar récolter de l'abeille
+## Quantité de nectar récoltée par une abeille à chaque prélèvement.
 @export var harvest_amount := 5.0
+
 
 @export_group("Qualité de source")
 
-## Distance à plat (unités) à partir de laquelle la source est jugée trop loin (score 0)
+## Distance à plat (unités) à partir de laquelle la source est jugée trop loin (score 0).
 @export var max_source_distance := 25.0
 
-## Durée de trajet (s) à partir de laquelle le score de temps tombe à 0
+## Durée de trajet (s) à partir de laquelle le score de temps tombe à 0.
 @export var max_trip_time := 120.0
 
-## Poids de chaque critère dans la rentabilité
+## Poids du stock de la fleur dans la rentabilité.
 @export_range(0.0, 1.0) var weight_stock := 0.4
+
+## Poids de la distance dans la rentabilité.
 @export_range(0.0, 1.0) var weight_distance := 0.3
+
+## Poids de la durée de trajet dans la rentabilité.
 @export_range(0.0, 1.0) var weight_time := 0.3
 
-## Retourne l'heure
-func hours_from(delta: float) -> float:
-	return delta * 24.0 / day_duration_seconds
 
-## Retourne true s'il y fait jour, sinon false
-func is_daytime() -> bool:
-	return sky.is_day()
+# ============================================================
+# État de la simulation
+# ============================================================
 
-## total heures écoulées
+## Toutes les fleurs de la scène, collectées au lancement.
+var flowers: Array[Flower] = []
+
+## Nombre total d'heures simulées écoulées depuis le lancement.
 var sim_hours := 0.0
+
+
+# ============================================================
+# Cycle de vie
+# ============================================================
 
 ## Crée [member bee_count] abeilles et leur injecte la ruche et la simulation.
 func _ready() -> void:
-	# Horloge unique
+	# Horloge unique
 	sky.game_time_enabled = false
 	sky.current_time = start_hour
 	# La ruche doit avoir calculé la zone du cadre avant qu'on y place les abeilles
@@ -212,16 +268,38 @@ func _ready() -> void:
 		bee.transform = bees_container.global_transform.affine_inverse() * hive.get_random_spawn_transform()
 		bees_container.add_child(bee)	# Position d'apparition
 
+
+## Fait avancer l'horloge simulée et le soleil.
 func _process(delta: float) -> void:
 	var dh := hours_from(delta)
 	sim_hours += dh
 	sky.current_time += dh # Recalcule le soleil à chaque changement
 
-## Distance horizontale entre 2 positions
+
+# ============================================================
+# Temps
+# ============================================================
+
+## Convertit une durée réelle [param delta] (s) en heures simulées.
+func hours_from(delta: float) -> float:
+	return delta * 24.0 / day_duration_seconds
+
+
+## Retourne true s'il fait jour, sinon false.
+func is_daytime() -> bool:
+	return sky.is_day()
+
+
+# ============================================================
+# Géométrie
+# ============================================================
+
+## Distance horizontale entre 2 positions.
 func get_flat_distance(from: Vector3, to: Vector3) -> float:
 	return Vector2(to.x - from.x, to.z - from.z).length()
 
-## Angle entre la direction du soleil et celle de la source
+
+## Angle entre la direction du soleil et celle de la source.
 func get_dance_angle(source_pos: Vector3, hive_pos: Vector3) -> float:
 	var to_source := source_pos - hive_pos
 	var to_sun: Vector3 = sky.sun.global_transform.basis.z   # direction vers le soleil

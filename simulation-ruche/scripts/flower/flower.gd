@@ -126,3 +126,9 @@ func _detect_species() -> Species:
 			return Species.ROSE_RED
 	push_warning("Flower: espèce inconnue pour la scène '%s', Lys par défaut." % scene_name)
 	return Species.LILY
+
+## Normale de la corolle au point de pose : axe Y de PistilMarker, qui doit sortir de la fleur.
+## Sert au stationnaire et à la pose (FieldState.update_landing()).
+## Normalisée : une instance mise à l'échelle ne doit pas fausser la hauteur de stationnaire.
+func get_landing_normal() -> Vector3:
+	return _pistil_marker.global_basis.y.normalized()
