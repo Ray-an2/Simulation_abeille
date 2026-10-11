@@ -1,11 +1,12 @@
 class_name BeeOverlay extends Control
 ## Surcouche 2D au-dessus du rendu 3D : un marqueur à l'écran pour chaque abeille,
-## et une infobulle avec ses données pour l'abeille survolée ou épinglée.
+## et une infobulle avec ses données pour l'abeille ou la fleur survolée ou épinglée.
 ## En vue abeille, le tableau de bord (BeeHud) prend le relais pour l'abeille suivie.
 ##
-## M : afficher / masquer les marqueurs.
+## M : afficher / masquer les marqueurs (abeilles seulement).
 ## I : activer / désactiver les infobulles et le tableau de bord de la vue abeille.
-## Clic gauche (infobulles actives) : épingler l'abeille sous le curseur, ou désépingler.
+## Clic gauche (infobulles actives) : épingler l'abeille, ou à défaut la fleur,
+## sous le curseur ; clic dans le vide : désépingler.
 ##
 ## À placer sous un CanvasLayer dont le layer est supérieur à celui du filtre
 ## de vision d'abeille, pour que les marqueurs ne soient pas pixelisés.
@@ -60,11 +61,17 @@ const BOX_COLOR := Color(0.0, 0.0, 0.0, 0.75)
 
 ## Distance (px) entre la souris et un marqueur en dessous de laquelle l'abeille est touchée.
 ## De près, la silhouette de l'abeille prend le relais si elle est plus grande.
+## Vaut aussi pour le pistil des fleurs.
 @export var pick_radius := 12.0
 
 ## Longueur (m) d'une abeille, pour calculer sa taille à l'écran.
 ## De près, toute l'abeille devient cliquable, pas seulement son centre.
 @export var bee_size := 0.015
+
+## Diamètre (m) d'une fleur, pour calculer sa taille à l'écran.
+## De près, toute la corolle devient cliquable. Ordre de grandeur réel :
+## 5 à 10 cm pour une rose, 10 à 15 cm pour un lys ; à ajuster aux modèles.
+@export var flower_size := 0.1
 
 ## Taille de police (px) du texte de l'infobulle.
 @export var font_size := 14
@@ -101,12 +108,20 @@ var _info_enabled := true
 ## Abeille épinglée par un clic : son infobulle reste affichée même sans survol.
 var _pinned: Bee = null
 
+## Fleur épinglée par un clic. Exclusive avec _pinned : épingler l'une désépingle l'autre.
+var _pinned_flower: Flower = null
+
 ## Position à l'écran de chaque abeille visible à la dernière image.
 ## Sert à retrouver l'abeille sous la souris (survol et clic).
 var _screen_positions: Dictionary[Bee, Vector2] = {}
 
 ## Rayon apparent (px) de chaque abeille visible à la dernière image.
 var _screen_radii: Dictionary[Bee, float] = {}
+
+## Position et rayon apparent (px) de chaque fleur visible à la dernière image.
+## Calculés seulement quand les infobulles sont actives.
+var _flower_positions: Dictionary[Flower, Vector2] = {}
+var _flower_radii: Dictionary[Flower, float] = {}
 
 # =============================================================================
 # Cycle de vie
@@ -132,11 +147,12 @@ func _process(_delta: float) -> void:
 # =============================================================================
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Clic gauche, infobulles actives : épingle l'abeille sous le curseur,
-	# ou désépingle si on clique dans le vide
+	# Clic gauche, infobulles actives : épingle l'abeille sous le curseur, à défaut
+	# la fleur ; un clic dans le vide désépingle tout
 	if _info_enabled and event is InputEventMouseButton and event.pressed \
 			and event.button_index == MOUSE_BUTTON_LEFT:
 		_pinned = _bee_at(event.position)
+		_pinned_flower = _flower_at(event.position) if _pinned == null else null
 		queue_redraw()
 		return
 
@@ -152,6 +168,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_info_enabled = not _info_enabled
 		if not _info_enabled:
 			_pinned = null
+			_pinned_flower = null
 		queue_redraw()
 
 # =============================================================================
@@ -171,8 +188,11 @@ func get_pinned_bee() -> Bee:
 
 ## Épingle [param bee], ou désépingle avec null. Utilisé par CameraSwitcher
 ## pour que l'épingle suive l'abeille quand on change d'abeille avec Tab.
+## Une fleur épinglée est alors lâchée : une seule épingle à la fois.
 func set_pinned_bee(bee: Bee) -> void:
 	_pinned = bee
+	if bee != null:
+		_pinned_flower = null
 	queue_redraw()
 
 
@@ -192,21 +212,37 @@ func _bee_at(pos: Vector2) -> Bee:
 			best_ratio = ratio
 	return best
 
+
+## Fleur sous [param pos], ou null. Même règle que _bee_at : pick_radius autour
+## du pistil, ou la corolle entière si elle est plus grande à l'écran.
+func _flower_at(pos: Vector2) -> Flower:
+	var best: Flower = null
+	var best_ratio := 1.0
+	for flower in _flower_positions:
+		var reach := maxf(pick_radius, _flower_radii[flower])
+		var ratio := pos.distance_to(_flower_positions[flower]) / reach
+		if ratio < best_ratio:
+			best = flower
+			best_ratio = ratio
+	return best
+
 # =============================================================================
 # Dessin
 # =============================================================================
 
 func _draw() -> void:
-	# Repartir de zéro : une abeille hors champ ne doit plus être sélectionnable
+	# Repartir de zéro : une abeille ou une fleur hors champ ne doit plus être sélectionnable
 	_screen_positions.clear()
 	_screen_radii.clear()
+	_flower_positions.clear()
+	_flower_radii.clear()
 	if not (_markers_enabled or _info_enabled) or bees_container == null:
 		return
 	# Caméra réellement utilisée pour le rendu (celle pilotée par PhantomCameraHost)
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
-	# Axe horizontal de l'écran, pour mesurer la taille apparente des abeilles
+	# Axe horizontal de l'écran, pour mesurer la taille apparente des abeilles et des fleurs
 	var cam_right := cam.global_basis.x
 
 	# --- Positions à l'écran et marqueurs ---
@@ -242,25 +278,61 @@ func _draw() -> void:
 		return
 
 	# --- Infobulle ---
+	# Fleurs repérées ici seulement : sans marqueur, elles ne servent qu'aux infobulles
+	_locate_flowers(cam, cam_right)
+
+	# Priorité : abeille épinglée, fleur épinglée, puis ce qui est sous la souris
+	# (abeille d'abord : une butineuse posée cache le pistil de sa fleur)
+	var bee: Bee = null
+	var flower: Flower = null
+	if is_instance_valid(_pinned):
+		bee = _pinned
+	elif is_instance_valid(_pinned_flower):
+		flower = _pinned_flower
+	else:
+		var mouse := get_local_mouse_position()
+		bee = _bee_at(mouse)
+		if bee == null:
+			flower = _flower_at(mouse)
+
 	var followed: Bee = followed_bee if is_instance_valid(followed_bee) else null
-	# Abeille épinglée en priorité, sinon celle survolée par la souris
-	var shown: Bee = _pinned if is_instance_valid(_pinned) \
-			else _bee_at(get_local_mouse_position())
 	# Pas d'infobulle pour l'abeille suivie : le tableau de bord affiche déjà ses données.
-	# Abeille épinglée hors champ : pas d'infobulle, elle revient quand l'abeille réapparaît
-	if shown == null or shown == followed or not _screen_positions.has(shown):
-		return
-	var at := _screen_positions[shown]
-	# L'anneau entoure le marqueur de loin, l'abeille entière de près
-	var ring := maxf(marker_radius, _screen_radii[shown]) + 4.0
-	draw_arc(at, ring, 0.0, TAU, 32, Color.WHITE, 1.5)
-	_draw_tooltip(shown, at, ring)
+	# Épinglée mais hors champ : l'infobulle revient quand elle réapparaît
+	if bee != null and bee != followed and _screen_positions.has(bee):
+		var at := _screen_positions[bee]
+		# L'anneau entoure le marqueur de loin, l'abeille entière de près
+		var ring := maxf(marker_radius, _screen_radii[bee]) + 4.0
+		draw_arc(at, ring, 0.0, TAU, 32, Color.WHITE, 1.5)
+		_draw_tooltip(_bee_info(bee), at, ring)
+	elif flower != null and _flower_positions.has(flower):
+		var at := _flower_positions[flower]
+		# L'anneau entoure la zone cliquable : le pistil de loin, la corolle de près
+		var ring := maxf(pick_radius, _flower_radii[flower]) + 4.0
+		draw_arc(at, ring, 0.0, TAU, 32, Color.WHITE, 1.5)
+		_draw_tooltip(_flower_info(flower), at, ring)
 
 
-## Dessine l'infobulle de [param bee] à droite de l'anneau de rayon [param ring],
+## Calcule la position et le rayon apparent à l'écran de chaque fleur visible.
+## Les fleurs s'inscrivent elles-mêmes dans le groupe « flowers » (Flower._ready).
+func _locate_flowers(cam: Camera3D, cam_right: Vector3) -> void:
+	for node in get_tree().get_nodes_in_group(&"flowers"):
+		var flower := node as Flower
+		# simulation null : setup() pas encore appelé, stock non initialisé
+		if flower == null or flower.simulation == null:
+			continue
+		# Pistil plutôt que l'origine du nœud (au pied de la tige) : c'est la partie visible
+		var world := flower.get_landing_position()
+		if not cam.is_position_in_frustum(world):
+			continue
+		var p := cam.unproject_position(world)
+		var edge := cam.unproject_position(world + cam_right * flower_size * 0.5)
+		_flower_positions[flower] = p
+		_flower_radii[flower] = p.distance_to(edge)
+
+
+## Dessine l'infobulle [param text] à droite de l'anneau de rayon [param ring],
 ## sans sortir de l'écran.
-func _draw_tooltip(bee: Bee, at: Vector2, ring: float) -> void:
-	var text := _bee_info(bee)
+func _draw_tooltip(text: String, at: Vector2, ring: float) -> void:
 	var box_size := _box_size(text, font_size)
 	# À droite de l'anneau, centré verticalement, puis ramené dans l'écran
 	var pos := at + Vector2(ring + 6.0, -box_size.y * 0.5)
@@ -312,7 +384,7 @@ func _bee_info(bee: Bee) -> String:
 
 	var flower := bee.known_flower
 	if is_instance_valid(flower):
-		lines.append("Source : %s (%s)" % [flower.name, Flower.Species.keys()[flower.species]])
+		lines.append("Source : %s (%s)" % [flower.name, flower.get_species_label()])
 		lines.append("Stock source : %.0f" % flower.resource)
 		lines.append("Rentabilité : %.2f" % bee.known_profitability)
 	else:
@@ -322,3 +394,41 @@ func _bee_info(bee: Bee) -> String:
 	if bee.current_state is FieldState:
 		lines.append("Trajet : %.1f s" % bee.trip_time)
 	return "\n".join(lines)
+
+
+## Texte affiché pour une fleur : état de son automate, stock (boucle d'épuisement),
+## et pression des abeilles sur elle (réservation, recrutement).
+func _flower_info(flower: Flower) -> String:
+	var sim := flower.simulation
+	var lines := PackedStringArray()
+	lines.append("%s" % [flower.get_species_label()])
+	lines.append("État : %s" % flower.get_state_label())
+	lines.append("Stock : %.0f / %.0f (seuil %.0f)" % [flower.resource, sim.max_resource, sim.threshold])
+	lines.append("Rentabilité : %.2f" % flower.get_profitability())
+	if flower.state == Flower.State.EMPTY:
+		lines.append("Recharge : reste %s sur %s" % [
+			_format_hours(flower.get_recharge_remaining()), _format_hours(flower.recharge_time)])
+	# Réservée dès qu'une abeille décide d'y aller : une fleur « Disponible »
+	# peut donc déjà être visée par une abeille en vol
+	var claimant := flower.get_claimant()
+	if claimant != null:
+		lines.append("Réservée par : %s" % claimant.name)
+	lines.append("Abeilles qui la connaissent : %d" % _bees_knowing(flower))
+	return "\n".join(lines)
+
+
+## Nombre d'abeilles dont la source connue est [param flower] (exploration ou danse).
+## Calculé seulement pour la fleur affichée : 200 comparaisons par image, négligeable.
+func _bees_knowing(flower: Flower) -> int:
+	var count := 0
+	for node in bees_container.get_children():
+		var bee := node as Bee
+		if bee != null and bee.known_flower == flower:
+			count += 1
+	return count
+
+
+## Durée en heures simulées → « 1 h 20 min ».
+func _format_hours(hours: float) -> String:
+	var minutes := roundi(hours * 60.0)
+	return "%d h %02d min" % [minutes / 60, minutes % 60]

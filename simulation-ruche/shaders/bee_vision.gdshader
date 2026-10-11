@@ -21,6 +21,12 @@ uniform float color_shift : hint_range(0.0, 1.0) = 1.0;
 /// le ciel et beaucoup de surfaces bleutées réfléchissent aussi des UV)
 uniform float uv_from_blue : hint_range(0.0, 1.0) = 0.5;
 
+/// Niveaux de mipmap supplémentaires pour lire la couleur (réglé par BeeVisionFilter)
+uniform float color_lod_offset : hint_range(0.0, 6.0) = 2.5;
+
+/// 0 = couleur à pleine résolution, 1 = couleur perçue seulement sur les grandes zones
+uniform float color_pooling : hint_range(0.0, 1.0) = 1.0;
+
 // Pas de la grille hexagonale : 1 en largeur, √3 en hauteur
 const vec2 HEX = vec2(1.0, 1.7320508);
 
@@ -75,12 +81,24 @@ void fragment() {
 	// Toute la cellule prend la couleur lue en son centre
 	vec2 p = SCREEN_UV * scale;
 	vec2 center = hex_center(p);
-	vec3 c = textureLod(screen_texture, center / scale, blur_lod).rgb;
+	vec2 uv_center = center / scale;
+	// Lecture à la taille d'une ommatidie : sert au contraste et aux contours
+	vec3 fine = textureLod(screen_texture, uv_center, blur_lod).rgb;
+	// Lecture sur une zone d'environ 15° : seule échelle où la couleur est perçue
+	vec3 coarse = textureLod(screen_texture, uv_center, blur_lod + color_lod_offset).rgb;
 
 	// Fausses couleurs : vert → rouge, bleu → vert, UV (approché) → bleu.
 	// Le rouge humain disparaît : une surface purement rouge devient sombre.
-	vec3 bee = vec3(c.g, c.b, c.b * uv_from_blue);
-	vec3 col = mix(c, bee, color_shift);
+	vec3 bee_fine = vec3(fine.g, fine.b, fine.b * uv_from_blue);
+	vec3 bee_coarse = vec3(coarse.g, coarse.b, coarse.b * uv_from_blue);
+
+	// Teinte de la zone large, modulée par le contraste vert local de la cellule.
+	// Le +0,05 évite l'explosion du rapport dans les zones très sombres.
+	float green_contrast = (fine.g + 0.05) / (coarse.g + 0.05);
+	vec3 bee_pooled = bee_coarse * clamp(green_contrast, 0.0, 4.0);
+
+	vec3 bee = mix(bee_fine, bee_pooled, color_pooling);
+	vec3 col = mix(fine, bee, color_shift);
 
 	// Bord de cellule : distance au centre (≈ 0,5 au bord d'un hexagone)
 	float edge = smoothstep(0.38, 0.55, length(p - center));

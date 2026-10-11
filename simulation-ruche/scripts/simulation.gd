@@ -41,6 +41,11 @@ class_name Simulation extends Node3D
 ## Heure de départ de la simulation.
 @export_range(0.0, 24.0) var start_hour := 8.0
 
+## Hauteur minimale du soleil (degrés) pour qu'une abeille sorte de la ruche.
+## Coupe les départs avant la nuit, pour que le trajet se termine de jour ;
+## retarde aussi les premiers départs du matin.
+@export_range(0.0, 30.0) var min_departure_elevation := 5.0
+
 
 @export_group("Ruche")
 
@@ -240,8 +245,9 @@ class_name Simulation extends Node3D
 ## Distance à plat (unités) à partir de laquelle la source est jugée trop loin (score 0).
 @export var max_source_distance := 25.0
 
-## Durée de trajet (s) à partir de laquelle le score de temps tombe à 0.
-@export var max_trip_time := 120.0
+## Durée de butinage (s) à partir de laquelle le score de temps tombe à 0.
+## Un jabot plein demande environ 50 à 60 s (6 fleurs) : score de temps ≈ 0,5.
+@export var max_forage_time := 120.0
 
 ## Poids du stock de la fleur dans la rentabilité.
 @export_range(0.0, 1.0) var weight_stock := 0.4
@@ -315,6 +321,18 @@ func hours_from(delta: float) -> float:
 ## Retourne true s'il fait jour, sinon false.
 func is_daytime() -> bool:
 	return sky.is_day()
+	
+## Hauteur du soleil au-dessus de l'horizon (degrés), négative la nuit.
+## basis.z du DirectionalLight pointe vers le soleil (voir get_dance_angle).
+func get_sun_elevation() -> float:
+	var to_sun: Vector3 = sky.sun.global_transform.basis.z.normalized()
+	return rad_to_deg(asin(clampf(to_sun.y, -1.0, 1.0)))
+
+
+## true si une abeille peut encore sortir : soleil assez haut pour que
+## le trajet commence et se termine avant la nuit.
+func can_leave() -> bool:
+	return is_daytime() and get_sun_elevation() >= min_departure_elevation
 
 
 # ============================================================

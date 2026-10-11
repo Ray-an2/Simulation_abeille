@@ -43,6 +43,20 @@ const RECHARGE_TIME := {
 	Species.ROSE_RED: 6.0,
 }
 
+## Libellés de l'espèce affichés dans l'interface (infobulles, tableau de bord).
+const SPECIES_LABELS := {
+	Species.LILY: "Lys",
+	Species.ROSE_BLUE: "Rose bleue",
+	Species.ROSE_RED: "Rose rouge",
+}
+
+## Libellés de l'état affichés dans l'interface (infobulles, tableau de bord).
+const STATE_LABELS := {
+	State.AVAILABLE: "Disponible",
+	State.BUSY: "Occupée",
+	State.EMPTY: "Vide, en recharge",
+}
+
 # =============================================================================
 # Paramètres
 # =============================================================================
@@ -185,6 +199,27 @@ func get_profitability() -> float:
 		return 0.0
 	var range_size := maxf(simulation.max_resource - simulation.threshold, 0.001)
 	return clampf((resource - simulation.threshold) / range_size, 0.0, 1.0)
+
+# =============================================================================
+# Lecture seule (appelé par l'interface : BeeOverlay)
+# =============================================================================
+
+## Abeille qui a réservé la fleur (en vol vers elle ou en train de la butiner), ou null.
+func get_claimant() -> Bee:
+	return _claimant if is_instance_valid(_claimant) else null
+
+## Heures simulées avant la fin de la recharge, 0 hors de l'état EMPTY.
+## En BUSY, _timer compte des secondes réelles : on ne le renvoie pas.
+func get_recharge_remaining() -> float:
+	return maxf(_timer, 0.0) if state == State.EMPTY else 0.0
+
+## Nom de l'espèce en français (Lys, Rose bleue, Rose rouge).
+func get_species_label() -> String:
+	return SPECIES_LABELS.get(species, "?")
+
+## Nom de l'état en français (Disponible, Occupée, Vide, en recharge).
+func get_state_label() -> String:
+	return STATE_LABELS.get(state, "?")
 
 # =============================================================================
 # Utilitaires internes

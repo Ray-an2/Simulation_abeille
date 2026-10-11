@@ -58,6 +58,8 @@ var _harvest_done: bool = false
 # =============================================================================
 
 func enter() -> void:
+	# Un seul passage en FORAGE par trajet : le chrono de butinage repart de zéro
+	bee.forage_time = 0.0
 	_visited.clear()
 	_flower = bee.known_flower
 	if is_instance_valid(_flower):
@@ -88,6 +90,8 @@ func interrupt() -> BeeState:
 	return super()
 
 func update(delta: float) -> BeeState:
+	# Chrono de butinage : sert au score de temps de la source (UNLOAD)
+	bee.forage_time += delta
 	if _phase == Phase.HOP:
 		return _update_hop(delta)
 

@@ -92,11 +92,13 @@ func update(delta: float) -> BeeState:
 
 ## Calcule la rentabilité de la source (0 à 1) et renvoie 1, 0 ou -1.
 func _evaluate_source() -> int:
+	# Le trajet est terminé : chrono remis à zéro (il reste affiché par le HUD)
+	bee.trip_time = 0.0
+	
 	var sim := bee.simulation
 	var flower := bee.known_flower
 
-	# Le trajet est terminé : on lit le chrono puis on le remet à zéro
-	var trip := bee.trip_time
+	# Le trajet est terminé : on remet à zéro le chrono
 	bee.trip_time = 0.0
 
 	# Aucune source connue, ou source épuisée
@@ -111,7 +113,11 @@ func _evaluate_source() -> int:
 	# Trois scores entre 0 (mauvais) et 1 (excellent)
 	var stock_score := flower.get_profitability()
 	var distance_score := 1.0 - clampf(bee.distance / sim.max_source_distance, 0.0, 1.0)
-	var time_score := 1.0 - clampf(trip / sim.max_trip_time, 0.0, 1.0)
+	
+	# Temps passé sur place à remplir le jabot : ne dépend que de la source
+	# (débit des fleurs, concurrence dans le massif). La distance a son propre score,
+	# et le temps d'exploration ne doit pas pénaliser une source qu'on vient de trouver.
+	var time_score := 1.0 - clampf(bee.forage_time / sim.max_forage_time, 0.0, 1.0)
 
 	# Moyenne pondérée (poids réglables dans simulation.gd)
 	var total_weight := maxf(sim.weight_stock + sim.weight_distance + sim.weight_time, 0.001)

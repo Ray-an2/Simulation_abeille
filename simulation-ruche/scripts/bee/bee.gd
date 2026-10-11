@@ -177,6 +177,10 @@ var recruited_by: Bee = null
 ## Durée du trajet en cours hors de la ruche
 var trip_time: float = 0.0
 
+## Temps (s) passé à butiner pendant ce trajet (prélèvements et vols entre fleurs).
+## Compté par FORAGE, lu par UNLOAD pour le score de temps de la source.
+var forage_time: float = 0.0
+
 ## Distance à plat ruche -> source
 var distance: float = 0.0
 
