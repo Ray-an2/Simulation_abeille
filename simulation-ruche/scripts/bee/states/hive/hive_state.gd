@@ -131,6 +131,6 @@ func _walk_straight_to(target: Vector3, delta: float) -> bool:
 ## seulement de jour. La nuit, l'abeille reste en IDLE ; elle garde known_flower
 ## en mémoire et pourra y retourner au matin (voir IdleState).
 func go_out_if_day(next: BeeState) -> BeeState:
-	if bee.simulation.can_leave():
+	if bee.can_leave():
 		return bee.leave_hive.then(next)
 	return bee.idle

@@ -191,6 +191,10 @@ var angle: float = 0.0
 ## Normale de la surface sur laquelle l'abeille est posée ; Vector3.ZERO quand elle vole.
 var surface_normal: Vector3 = Vector3.ZERO
 
+## Hauteur du soleil (degrés) en dessous de laquelle cette abeille cesse de voler.
+## Tirée à la création : les abeilles ne s'arrêtent pas toutes au même moment.
+var light_threshold: float = 0.0
+
 # =============================================================================
 # État interne
 # =============================================================================
@@ -296,6 +300,10 @@ func _ready() -> void:
 	_anim_offset = randi() % ANIM_FAR_STEP
 
 	_avoid_side = 1.0 if randf() < 0.5 else -1.0
+	
+	# Seuil de lumière propre à cette abeille
+	light_threshold = randf_range(simulation.light_threshold_min,
+			simulation.light_threshold_max)
 
 	# Taille maximale des pelotes : celle réglée dans bee.tscn
 	for p in _pollen:
@@ -551,6 +559,24 @@ func get_ground_height(pos: Vector3) -> float:
 func is_path_clear(from: Vector3, to: Vector3) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(from, to, simulation.obstacle_mask)
 	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+# =============================================================================
+# Lumière (appelé par les états)
+# =============================================================================
+
+## true si la lumière permet à cette abeille de partir. Le soir, le soleil doit
+## dépasser son seuil d'au moins departure_margin, pour que le trajet se termine
+## avant qu'il passe dessous. Le matin, le soleil monte : son seuil suffit.
+func can_leave() -> bool:
+	var margin := simulation.departure_margin if simulation.sun_setting else 0.0
+	return simulation.is_daytime() \
+			and simulation.get_sun_elevation() >= light_threshold + margin
+
+## true si la lumière est trop faible pour cette abeille : dehors, elle rentre.
+## is_daytime() reste un filet de sécurité si le seuil est sous la limite de Sky3D.
+func is_too_dark() -> bool:
+	return not simulation.is_daytime() \
+			or simulation.get_sun_elevation() < light_threshold
 
 # =============================================================================
 # Source connue (appelé par les états)

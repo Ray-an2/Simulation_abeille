@@ -4,6 +4,9 @@
 resource_name = "Amplify"
 volume_db = 10.0
 
+[sub_resource type="AudioEffectLowPassFilter" id="AudioEffectLowPassFilter_j3pel"]
+resource_name = "LowPassFilter"
+
 [resource]
 bus/1/name = &"Bees"
 bus/1/solo = false
@@ -19,3 +22,5 @@ bus/2/volume_db = 0.06726074
 bus/2/send = &"Master"
 bus/2/effect/0/effect = SubResource("AudioEffectAmplify_j3pel")
 bus/2/effect/0/enabled = true
+bus/2/effect/1/effect = SubResource("AudioEffectLowPassFilter_j3pel")
+bus/2/effect/1/enabled = true

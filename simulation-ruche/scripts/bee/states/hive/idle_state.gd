@@ -59,13 +59,17 @@ func update(delta: float) -> BeeState:
 	if dancer != null:
 		return bee.watch.follow(dancer)
 	
-	# Pas de sortie la nuit : ni réactivation, ni exploration
-	if bee.simulation.can_leave():
+	# Pas de sortie si la lumière est insuffisante pour cette abeille
+	if bee.can_leave():
 		# Au matin, une abeille qui connaît une source y retourne sans attendre
 		# de danse. p_reactivate est une probabilité par seconde.
 		if is_instance_valid(bee.known_flower) \
 				and randf() < bee.simulation.p_reactivate * delta:
 			return bee.leave_hive.then(bee.go)
+		# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
+		# L'abeille sort d'abord à pied, puis explore une fois dehors.
+		if randf() < bee.simulation.p_scout * delta:
+			return bee.leave_hive.then(bee.scout)
 
 	# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
 	# L'abeille sort d'abord à pied, puis explore une fois dehors.

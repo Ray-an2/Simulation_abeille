@@ -41,10 +41,30 @@ class_name Simulation extends Node3D
 ## Heure de départ de la simulation.
 @export_range(0.0, 24.0) var start_hour := 8.0
 
+## Hauteur du soleil (degrés) à partir de laquelle l'activité de sortie est maximale.
+## Entre les deux seuils, les départs spontanés se raréfient progressivement.
+## Estimation à régler.
+@export_range(0.0, 60.0) var full_activity_elevation := 15.0
+
 ## Hauteur minimale du soleil (degrés) pour qu'une abeille sorte de la ruche.
 ## Coupe les départs avant la nuit, pour que le trajet se termine de jour ;
 ## retarde aussi les premiers départs du matin.
 @export_range(0.0, 30.0) var min_departure_elevation := 5.0
+
+## Seuils de lumière individuels : chaque abeille tire au hasard, à sa création,
+## une hauteur du soleil (degrés) dans cet intervalle. En dessous, elle cesse de voler.
+## Chez A. mellifera, premiers départs et dernières rentrées encadrent le lever
+## et le coucher à quelques minutes près : soleil autour de 0°.
+## L'étendue de l'intervalle est une estimation (pas de mesure de la dispersion).
+@export_range(-6.0, 30.0) var light_threshold_min := -1.0
+@export_range(-6.0, 30.0) var light_threshold_max := 5.0
+
+## Descente du soleil (degrés) pendant un trajet typique, appliquée le soir seulement :
+## une abeille ne part que si le soleil est au-dessus de son seuil + cette marge.
+## Dans la réalité, un trajet de ~20 min correspond à quelques degrés ; ici la
+## compression du temps (day_duration_seconds) rend les trajets bien plus longs
+## en heures simulées. À régler d'après la durée des trajets affichée dans le HUD.
+@export_range(0.0, 45.0) var departure_margin := 10.0
 
 
 @export_group("Ruche")
@@ -282,6 +302,13 @@ var flowers: Array[Flower] = []
 ## Nombre total d'heures simulées écoulées depuis le lancement.
 var sim_hours := 0.0
 
+## true quand le soleil descend (après-midi et soir), false quand il monte.
+## Mis à jour dans _physics_process ; sert à n'appliquer departure_margin que le soir.
+var sun_setting := false
+
+## Hauteur du soleil relevée à la dernière mise à jour de sun_setting.
+var _last_elevation := 0.0
+
 
 # ============================================================
 # Cycle de vie
@@ -321,6 +348,14 @@ func _process(delta: float) -> void:
 	sim_hours += dh
 	sky.current_time += dh # Recalcule le soleil à chaque changement
 
+## Suit le sens de déplacement du soleil. Sky3D ne met pas forcément à jour
+## la lumière à chaque image : on ne compare que des valeurs différentes.
+func _physics_process(_delta: float) -> void:
+	var elevation := get_sun_elevation()
+	if not is_equal_approx(elevation, _last_elevation):
+		sun_setting = elevation < _last_elevation
+		_last_elevation = elevation
+
 
 # ============================================================
 # Temps
@@ -340,12 +375,13 @@ func is_daytime() -> bool:
 func get_sun_elevation() -> float:
 	var to_sun: Vector3 = sky.sun.global_transform.basis.z.normalized()
 	return rad_to_deg(asin(clampf(to_sun.y, -1.0, 1.0)))
-
-
-## true si une abeille peut encore sortir : soleil assez haut pour que
-## le trajet commence et se termine avant la nuit.
-func can_leave() -> bool:
-	return is_daytime() and get_sun_elevation() >= min_departure_elevation
+	
+## Facteur d'activité de sortie, entre 0 (nuit, ou soleil trop bas) et 1 (plein jour).
+## Multiplie les probabilités de départ spontané (p_scout, p_reactivate).
+func get_activity_factor() -> float:
+	if not is_daytime():
+		return 0.0
+	return smoothstep(min_departure_elevation, full_activity_elevation, get_sun_elevation())
 
 
 # ============================================================

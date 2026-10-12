@@ -142,10 +142,10 @@ var _arrival_dir := Vector3.ZERO
 # Transitions communes au super-état
 # =============================================================================
 
-## La nuit tombée, toute abeille dehors rentre à la ruche, quel que soit son état.
+## Lumière trop faible pour cette abeille : elle rentre, quel que soit son état.
 ## RETURN et FORAGE redéfinissent cette méthode (voir leurs scripts).
 func interrupt() -> BeeState:
-	if not bee.simulation.is_daytime():
+	if bee.is_too_dark():
 		return bee.return_home
 	return null
 
