@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c5l23ju3fs6yg"]
 
-[ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/materials/M_Hive_Wood.tres" id="1_p7vt2"]
+[ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/materials/M_Hive_Wood.tres" id="1_m8h2x"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_cxt7r"]
 top_radius = 0.05
@@ -13,26 +13,26 @@ size = Vector3(0.05, 1, 1.5899048)
 [node name="Panneau" type="Node3D" unique_id=65375187]
 
 [node name="Poutre" type="MeshInstance3D" parent="." unique_id=431938459]
-material_override = ExtResource("1_p7vt2")
+material_override = ExtResource("1_m8h2x")
 mesh = SubResource("CylinderMesh_cxt7r")
 
 [node name="Planche" type="MeshInstance3D" parent="." unique_id=1714903359]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.039918862, 0.53278965, 0.009857178)
-material_override = ExtResource("1_p7vt2")
+material_override = ExtResource("1_m8h2x")
 mesh = SubResource("BoxMesh_cxt7r")
 
 [node name="Titre" type="Label3D" parent="." unique_id=485130576]
 transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.14431381, 0.9174125, 0)
-text = "Auteur"
+text = "Auteurs"
 
 [node name="Text1" type="Label3D" parent="." unique_id=1747441786]
 transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.08996883, 0.71128225, 0)
-text = "Liutwin Piernet : Développeur & apidologue des abeilles "
+text = "Liutwin Piernet : Développeur & apidologue"
 font_size = 10
 
 [node name="Text2" type="Label3D" parent="." unique_id=1068543393]
 transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.08996883, 0.56690776, 0)
-text = "Rayan Brossard : Level designer & amoureux des fleurs"
+text = "Rayan Brossard : Level designer & floraphile"
 font_size = 10
 
 [node name="Text3" type="Label3D" parent="." unique_id=1327478643]

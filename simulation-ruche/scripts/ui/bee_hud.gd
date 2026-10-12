@@ -2,7 +2,7 @@ class_name BeeHud extends Control
 ## Tableau de bord de la vue abeille. Les panneaux occupent les quatre coins pour
 ## laisser le centre de la vue libre, et leur contenu dépend de ce que fait l'abeille :
 ##   haut gauche  : identité, état et sa progression, vol, compteurs de vie ;
-##   haut droit   : heure simulée et journal des dernières transitions ;
+##   haut droit   : journal des dernières transitions ;
 ##   bas gauche   : charge transportée, source connue et chaîne de recrutement ;
 ##   bas droit    : danse qui annoncerait la source (direction et distance),
 ##                  rentabilité et décision prévue ;
@@ -224,14 +224,9 @@ func _state_rows(bee: Bee, state: StringName, in_state: float) -> Array[Dictiona
 	return rows
 
 
-## Haut droit : heure simulée et dernières transitions, la plus récente en haut.
+## Haut droit : dernières transitions, la plus récente en haut.
 func _journal_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
-	var sky := bee.simulation.sky
-	if sky != null:
-		var h := fposmod(sky.current_time, 24.0)
-		rows.append(_row_pair("Heure simulée", "%02d:%02d" % [int(h), int(fmod(h, 1.0) * 60.0)]))
-		rows.append(_row_gap())
 	if rec == null or rec.transitions.is_empty():
 		rows.append(_row_text("Aucune transition observée"))
 		return rows

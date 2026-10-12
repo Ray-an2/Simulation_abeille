@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://rm2ur88d8sj0"]
 
-[ext_resource type="Texture2D" uid="uid://dnu07nn86muta" path="res://addons/FoliageFlow/Icon.png" id="1_yt8a2"]
+[ext_resource type="Texture2D" uid="uid://cosjiejmpnww3" path="res://addons/FoliageFlow/Icon.png" id="1_yt8a2"]
 
 [sub_resource type="GDScript" id="GDScript_u0op2"]
 script/source = "@tool
