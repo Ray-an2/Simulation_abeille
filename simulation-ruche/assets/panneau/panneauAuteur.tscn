@@ -1,0 +1,46 @@
+[gd_scene format=3 uid="uid://c5l23ju3fs6yg"]
+
+[ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/materials/M_Hive_Wood.tres" id="1_p7vt2"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_cxt7r"]
+top_radius = 0.05
+bottom_radius = 0.05
+height = 1.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_cxt7r"]
+size = Vector3(0.05, 1, 1.5899048)
+
+[node name="Panneau" type="Node3D" unique_id=65375187]
+
+[node name="Poutre" type="MeshInstance3D" parent="." unique_id=431938459]
+material_override = ExtResource("1_p7vt2")
+mesh = SubResource("CylinderMesh_cxt7r")
+
+[node name="Planche" type="MeshInstance3D" parent="." unique_id=1714903359]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.039918862, 0.53278965, 0.009857178)
+material_override = ExtResource("1_p7vt2")
+mesh = SubResource("BoxMesh_cxt7r")
+
+[node name="Titre" type="Label3D" parent="." unique_id=485130576]
+transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.14431381, 0.9174125, 0)
+text = "Auteur"
+
+[node name="Text1" type="Label3D" parent="." unique_id=1747441786]
+transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.08996883, 0.71128225, 0)
+text = "Liutwin Piernet : Développeur & apidologue des abeilles "
+font_size = 10
+
+[node name="Text2" type="Label3D" parent="." unique_id=1068543393]
+transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.08996883, 0.56690776, 0)
+text = "Rayan Brossard : Modélisateur 3D & amoureux des fleurs"
+font_size = 10
+
+[node name="Text3" type="Label3D" parent="." unique_id=1327478643]
+transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.08996883, 0.407529, 0)
+text = "Ewan Droneau : Spécialiste de l'état SCOUT des abeilles"
+font_size = 10
+
+[node name="Text4" type="Label3D" parent="." unique_id=1475254651]
+transform = Transform3D(-0.029113395, 0, 0.9995761, 0, 1, 0, -0.9995761, 0, -0.029113395, 0.08996883, 0.20260888, 0)
+text = "Amuser vous !"
+font_size = 10
