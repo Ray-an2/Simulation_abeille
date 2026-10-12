@@ -18,6 +18,10 @@ const GRID_CELL := 0.015
 ## Volume (dB) du bourdonnement quand la ruche est vide : -80 dB est inaudible.
 const SILENT_DB := -80.0
 
+## Fréquence de coupure (Hz) du filtre quand la caméra est dans la ruche :
+## au-dessus de l'audible, le filtre ne change rien.
+const OPEN_CUTOFF_HZ := 20000.0
+
 # =============================================================================
 # Paramètres réglables
 # =============================================================================
@@ -80,6 +84,20 @@ const SILENT_DB := -80.0
 ## Vitesse de lissage du volume : évite les sauts quand plusieurs
 ## abeilles entrent ou sortent en même temps.
 @export var buzz_smoothing: float = 2.0
+
+## Fréquence de coupure (Hz) quand la caméra est hors de la ruche : le verre et le bois
+## laissent passer les graves du bourdonnement et coupent les aigus.
+@export var outside_cutoff_hz: float = 800.0
+
+## Atténuation (dB) ajoutée quand la caméra est hors de la ruche, en plus du filtrage.
+@export var outside_attenuation_db: float = 6.0
+
+## Vitesse de passage dedans / dehors (1/s). Avec 10, le passage prend environ 0,3 s.
+@export var wall_smoothing: float = 10.0
+
+## Marge (m) ajoutée autour de la cire pour délimiter l'intérieur de la ruche :
+## doit couvrir les montants du cadre et l'espace entre le bas du cadre et le plancher.
+@export var inside_margin: float = 0.03
 
 # =============================================================================
 # Nœuds de la scène
@@ -172,13 +190,33 @@ var _receiver_free_at: Array[float] = []
 var _clock := 0.0
 
 # =============================================================================
+# Son
+# =============================================================================
+
+## Volume (dB) lissé selon le nombre d'abeilles, avant l'atténuation des parois.
+## Séparé de _buzz.volume_db : le passage dedans / dehors a son propre lissage, plus rapide.
+var _buzz_base_db := 0.0
+
+## Position de la caméra, de 0 (dans la ruche) à 1 (dehors), lissée.
+## Part de 1 : au lancement, la caméra est dans une vue fixe, hors de la ruche.
+var _outside := 1.0
+
+## Filtre passe-bas du bus de HiveBuzz, null si le bus n'est pas utilisable.
+var _lowpass: AudioEffectLowPassFilter
+
+# =============================================================================
 # Cycle de vie
 # =============================================================================
 
 func _ready() -> void:
 	_compute_comb_extent()
+	# Point de départ du lissage : le volume réglé dans l'inspecteur (-80 conseillé)
+	_buzz_base_db = _buzz.volume_db
+	_lowpass = _setup_lowpass()
 
 func _process(delta: float) -> void:
+	# Parois d'abord : _update_buzz_volume() utilise _outside
+	_update_walls(delta)
 	_update_buzz_volume(delta)
 
 func _physics_process(delta: float) -> void:
@@ -282,6 +320,20 @@ func clamp_to_floor(point: Vector3) -> Vector3:
 
 	var lateral := rel.dot(side)
 	return point - side * (lateral - clampf(lateral, -half_width, half_width))
+
+## Vrai si [param point] est dans la ruche : entre les deux vitres et dans l'emprise
+## de la cire, agrandie de inside_margin pour couvrir les montants et le plancher.
+## Même hypothèse que clamp_to_floor() : vitres centrées sur EntranceMarker.
+func is_inside(point: Vector3) -> bool:
+	# Écart au milieu des vitres, le long de la normale du cadre
+	var lateral := (point - _entrance.global_position).dot(get_comb_normal())
+	if absf(lateral) > floor_half_width:
+		return false
+	# Position dans le plan du cadre, par rapport au centre de la zone de déambulation
+	var local := get_spawn_transform().affine_inverse() * point - _comb_center_local
+	# spawn_extent est déjà réduit de comb_margin : on la rajoute pour retrouver la cire entière
+	var half := spawn_extent + Vector2.ONE * (comb_margin + inside_margin)
+	return absf(local.x) <= half.x and absf(local.z) <= half.y
 
 # =============================================================================
 # Zone du cadre (déambulation en IDLE)
@@ -599,7 +651,8 @@ func _find_free_receiver(count: int) -> int:
 # Son
 # =============================================================================
 
-## Ajuste le volume du bourdonnement collectif au nombre d'abeilles présentes.
+## Ajuste le volume du bourdonnement collectif au nombre d'abeilles présentes,
+## puis retire l'atténuation des parois si la caméra est dehors.
 func _update_buzz_volume(delta: float) -> void:
 	var target := SILENT_DB
 	if bees_inside > 0:
@@ -607,7 +660,42 @@ func _update_buzz_volume(delta: float) -> void:
 		# linear_to_db(√N) = 20·log10(√N) = 10·log10(N)
 		target = buzz_single_db + linear_to_db(sqrt(float(bees_inside)))
 	# Lissage exponentiel, indépendant du framerate
-	_buzz.volume_db = lerpf(_buzz.volume_db, target, 1.0 - exp(-buzz_smoothing * delta))
+	_buzz_base_db = lerpf(_buzz_base_db, target, 1.0 - exp(-buzz_smoothing * delta))
+	_buzz.volume_db = _buzz_base_db - outside_attenuation_db * _outside
+
+## Suit la position de la caméra active (celle qui sert d'auditeur) et règle le filtre
+## des parois : son net dans la ruche, assourdi dehors.
+func _update_walls(delta: float) -> void:
+	var cam := get_viewport().get_camera_3d()
+	var target := 0.0 if cam != null and is_inside(cam.global_position) else 1.0
+	_outside = lerpf(_outside, target, 1.0 - exp(-wall_smoothing * delta))
+	if _lowpass != null:
+		# Interpolation en fréquence logarithmique : l'oreille perçoit des octaves, pas des Hz.
+		# Une interpolation linéaire resterait presque tout le passage au-dessus de 10 kHz.
+		_lowpass.cutoff_hz = exp(lerpf(log(OPEN_CUTOFF_HZ), log(outside_cutoff_hz), _outside))
+
+## Renvoie le filtre passe-bas du bus de HiveBuzz, en l'ajoutant s'il n'existe pas.
+## Le filtre agit sur tout le bus : HiveBuzz doit être seul dessus (bus Ruche),
+## sinon les abeilles en vol seraient assourdies aussi.
+func _setup_lowpass() -> AudioEffectLowPassFilter:
+	var bus := AudioServer.get_bus_index(_buzz.bus)
+	# -1 : bus introuvable ; 0 : Master, partagé par tous les sons
+	if bus <= 0:
+		push_warning("Hive : HiveBuzz doit avoir son propre bus pour l'effet des parois (bus actuel : %s)" % _buzz.bus)
+		return null
+	for i in AudioServer.get_bus_effect_count(bus):
+		var effect := AudioServer.get_bus_effect(bus, i) as AudioEffectLowPassFilter
+		if effect != null:
+			return effect
+	# Pas de filtre dans la configuration des bus : on en ajoute un pour la durée de l'exécution
+	var lowpass := AudioEffectLowPassFilter.new()
+	AudioServer.add_bus_effect(bus, lowpass)
+	return lowpass
+	
+## Bus du bourdonnement collectif, avec le filtre des parois.
+## Les abeilles l'empruntent pour les sauts entre le cadre et le plancher (Bee._update_buzz).
+func get_buzz_bus() -> StringName:
+	return _buzz.bus
 	
 # =============================================================================
 # Lecture (appelé par l'interface)

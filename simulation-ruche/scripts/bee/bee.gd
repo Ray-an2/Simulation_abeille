@@ -65,6 +65,16 @@ const BUZZ_OFF_DB := -60.0
 ## Vitesse du fondu (1/s). Avec 12, l'extinction prend environ 0,3 s.
 const BUZZ_FADE_SPEED := 12.0
 
+## Durée (s) pendant laquelle le bourdonnement reste allumé après un saut entre le cadre
+## et le plancher. Un saut ne dure qu'une à deux dixièmes de seconde : sans ce maintien,
+## le fondu n'aurait pas le temps de monter.
+const HOP_BUZZ_HOLD := 0.3
+
+## Écart (dB) du bourdonnement de saut par rapport au vol : -10 pour compenser l'Amplify
+## du bus de la ruche (+10 dB), puis -6 pour qu'un saut reste plus discret qu'un vol.
+## À revoir si l'Amplify du bus Ruche change.
+const HOP_BUZZ_OFFSET_DB := -16.0
+
 # --- Pelotes de pollen (indicateur visuel de charge) ---
 
 ## Durée (s) de l'animation de croissance des pelotes après chaque visite.
@@ -99,7 +109,7 @@ var simulation: Simulation
 ## Lecteur d'animations du modèle glTF (hover, idle, take_off_and_land).
 @onready var _anim: AnimationPlayer = $Model/AnimationPlayer
 
-## Bourdonnement individuel, audible uniquement en vol.
+## Bourdonnement individuel, en vol et pendant les sauts dans la ruche.
 @onready var _buzz: AudioStreamPlayer3D = $Buzz
 
 ## Pelotes de pollen, enfants des BoneAttachment3D des pattes arrière.
@@ -239,6 +249,14 @@ var _anim_offset := 0
 ## Relevé dans _ready(), avant que le fondu ne le modifie.
 var _buzz_on_db := 0.0
 
+## Bus du nœud Buzz réglé dans bee.tscn, utilisé pour le vol dehors.
+## Relevé dans _ready() : pendant un saut, le lecteur passe sur le bus de la ruche.
+var _buzz_field_bus: StringName
+
+## Temps restant (s) de bourdonnement après le dernier saut.
+## Rechargé à chaque appel de hop_towards(), décompté dans _update_buzz().
+var _hop_buzz_timer := 0.0
+
 # --- Pelotes de pollen ---
 
 ## Tween en cours sur les pelotes, pour l'interrompre si la charge change de nouveau.
@@ -281,6 +299,9 @@ func _ready() -> void:
 
 	# Volume de référence réglé dans l'inspecteur, avant toute modification par le fondu
 	_buzz_on_db = _buzz.volume_db
+	
+	# Bus de vol réglé dans l'inspecteur, avant qu'un saut ne le change
+	_buzz_field_bus = _buzz.bus
 
 	# Hauteur légèrement différente par abeille : évite l'effet « 200 clones »
 	_buzz.pitch_scale = randf_range(0.9, 1.1)
@@ -529,6 +550,7 @@ func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, de
 	_face(facing, up, delta)
 	# move_toward ne dépasse jamais la cible : arrivée exacte
 	global_position = global_position.move_toward(target, speed * delta)
+	_hop_buzz_timer = HOP_BUZZ_HOLD
 
 # =============================================================================
 # Requêtes (appelé par les états)
@@ -802,24 +824,40 @@ func _face(direction: Vector3, up: Vector3, delta: float, max_rate := INF) -> vo
 
 # --- Son ---
 
-## Allume, fond et coupe le bourdonnement individuel. L'abeille bourdonne dehors
-## tant qu'elle bat des ailes :
-##   - en vol : vitesse non nulle, de la fin du décollage jusqu'au land() de la pose
-##     (approche finale et stationnaire devant la fleur compris) ;
-##   - au décollage, où la vitesse est encore nulle : animation _bee_takeoff ;
-##   - posée mais en stationnaire (ForageState, prélèvement refusé) : animation _bee_hover.
-## Dans la ruche, le son individuel reste coupé : le bourdonnement collectif de Hive le remplace.
+## Allume, fond et coupe le bourdonnement individuel. L'abeille bourdonne :
+##   - dehors, tant qu'elle bat des ailes :
+##       - en vol : vitesse non nulle, de la fin du décollage jusqu'au land() de la pose
+##         (approche finale et stationnaire devant la fleur compris) ;
+##       - au décollage, où la vitesse est encore nulle : animation _bee_takeoff ;
+##       - posée mais en stationnaire (ForageState, prélèvement refusé) : animation _bee_hover ;
+##   - dans la ruche, pendant les sauts entre le cadre et le plancher (hop_towards),
+##     plus faiblement et sur le bus de la ruche, derrière le filtre des vitres.
+## Le reste du temps dans la ruche, le son individuel reste coupé :
+## le bourdonnement collectif de Hive le remplace.
 func _update_buzz(delta: float) -> void:
+	_hop_buzz_timer = maxf(_hop_buzz_timer - delta, 0.0)
+
 	# La vitesse seule ne suffit pas : nulle pendant tout le décollage.
 	# L'animation seule non plus : _bee_landing n'est pas bouclée et peut finir
 	# pendant le stationnaire devant la fleur, ailes encore battantes.
-	var flapping := current_state is FieldState \
+	var flying := current_state is FieldState \
 			and (not is_landed() or _anim.current_animation in WING_ANIMS)
-	var target_db := _buzz_on_db if flapping else BUZZ_OFF_DB
+	var hopping := current_state is HiveState and _hop_buzz_timer > 0.0
+	var flapping := flying or hopping
+
+	var target_db := BUZZ_OFF_DB
+	if flying:
+		target_db = _buzz_on_db
+	elif hopping:
+		target_db = _buzz_on_db + HOP_BUZZ_OFFSET_DB
 
 	# Début du battement : on part du silence, à un point aléatoire de la boucle
 	# pour que les abeilles ne bourdonnent pas en phase
 	if flapping and not _buzz.playing:
+		# Bus choisi seulement à l'arrêt : jamais de saut de bus en plein son.
+		# Entre un saut et un vol, l'abeille marche toujours assez longtemps
+		# pour que le lecteur se soit arrêté.
+		_buzz.bus = hive.get_buzz_bus() if hopping else _buzz_field_bus
 		_buzz.volume_db = BUZZ_OFF_DB
 		_buzz.play(randf() * _buzz.stream.get_length())
 
