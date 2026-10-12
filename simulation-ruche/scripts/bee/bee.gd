@@ -569,14 +569,12 @@ func is_path_clear(from: Vector3, to: Vector3) -> bool:
 ## avant qu'il passe dessous. Le matin, le soleil monte : son seuil suffit.
 func can_leave() -> bool:
 	var margin := simulation.departure_margin if simulation.sun_setting else 0.0
-	return simulation.is_daytime() \
-			and simulation.get_sun_elevation() >= light_threshold + margin
+	return simulation.get_sun_elevation() >= light_threshold + margin
 
 ## true si la lumière est trop faible pour cette abeille : dehors, elle rentre.
-## is_daytime() reste un filet de sécurité si le seuil est sous la limite de Sky3D.
+## Seuils individuels : les abeilles ne rentrent pas toutes au même moment.
 func is_too_dark() -> bool:
-	return not simulation.is_daytime() \
-			or simulation.get_sun_elevation() < light_threshold
+	return simulation.get_sun_elevation() < light_threshold
 
 # =============================================================================
 # Source connue (appelé par les états)

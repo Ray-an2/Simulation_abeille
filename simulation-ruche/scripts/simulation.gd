@@ -41,16 +41,6 @@ class_name Simulation extends Node3D
 ## Heure de départ de la simulation.
 @export_range(0.0, 24.0) var start_hour := 8.0
 
-## Hauteur du soleil (degrés) à partir de laquelle l'activité de sortie est maximale.
-## Entre les deux seuils, les départs spontanés se raréfient progressivement.
-## Estimation à régler.
-@export_range(0.0, 60.0) var full_activity_elevation := 15.0
-
-## Hauteur minimale du soleil (degrés) pour qu'une abeille sorte de la ruche.
-## Coupe les départs avant la nuit, pour que le trajet se termine de jour ;
-## retarde aussi les premiers départs du matin.
-@export_range(0.0, 30.0) var min_departure_elevation := 5.0
-
 ## Seuils de lumière individuels : chaque abeille tire au hasard, à sa création,
 ## une hauteur du soleil (degrés) dans cet intervalle. En dessous, elle cesse de voler.
 ## Chez A. mellifera, premiers départs et dernières rentrées encadrent le lever
@@ -375,13 +365,6 @@ func is_daytime() -> bool:
 func get_sun_elevation() -> float:
 	var to_sun: Vector3 = sky.sun.global_transform.basis.z.normalized()
 	return rad_to_deg(asin(clampf(to_sun.y, -1.0, 1.0)))
-	
-## Facteur d'activité de sortie, entre 0 (nuit, ou soleil trop bas) et 1 (plein jour).
-## Multiplie les probabilités de départ spontané (p_scout, p_reactivate).
-func get_activity_factor() -> float:
-	if not is_daytime():
-		return 0.0
-	return smoothstep(min_departure_elevation, full_activity_elevation, get_sun_elevation())
 
 
 # ============================================================

@@ -66,10 +66,6 @@ func update(delta: float) -> BeeState:
 		if is_instance_valid(bee.known_flower) \
 				and randf() < bee.simulation.p_reactivate * delta:
 			return bee.leave_hive.then(bee.go)
-		# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
-		# L'abeille sort d'abord à pied, puis explore une fois dehors.
-		if randf() < bee.simulation.p_scout * delta:
-			return bee.leave_hive.then(bee.scout)
 
 	# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
 	# L'abeille sort d'abord à pied, puis explore une fois dehors.
