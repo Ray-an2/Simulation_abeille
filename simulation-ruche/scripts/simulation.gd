@@ -66,7 +66,7 @@ class_name Simulation extends Node3D
 
 ## Probabilité par seconde qu'une abeille en IDLE parte explorer.
 ## À multiplier par delta dans IdleState, pour ne pas dépendre de la fréquence d'images.
-@export var p_scout: float = 0.002
+@export var p_scout: float = 0.001
 
 ## Rayon (unités) de la zone explorée autour de la ruche en SCOUT.
 @export var scout_radius: float = 70.0

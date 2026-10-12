@@ -34,9 +34,11 @@ transform = Transform3D(-4.3711406e-08, 1, 4.371139e-08, 0, -4.371139e-08, 1, 1,
 [node name="HiveBuzz" type="AudioStreamPlayer3D" parent="." unique_id=1276125601]
 unique_name_in_owner = true
 stream = ExtResource("3_5x64p")
+volume_db = -80.0
+unit_size = 1.0
+max_db = 6.0
 autoplay = true
-max_distance = 3.0
-bus = &"Bees"
+bus = &"Ruche"
 
 [node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=1860506252]
 collision_layer = 4
