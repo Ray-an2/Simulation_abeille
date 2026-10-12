@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://c5l23ju3fs6yg"]
 
 [ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/materials/M_Hive_Wood.tres" id="1_m8h2x"]
+[ext_resource type="Material" uid="uid://cehfvdn0tvoh5" path="res://assets/textures/ground/marron.tres" id="2_kv8rd"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_cxt7r"]
 top_radius = 0.05
@@ -18,7 +19,7 @@ mesh = SubResource("CylinderMesh_cxt7r")
 
 [node name="Planche" type="MeshInstance3D" parent="." unique_id=1714903359]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.039918862, 0.53278965, 0.009857178)
-material_override = ExtResource("1_m8h2x")
+material_override = ExtResource("2_kv8rd")
 mesh = SubResource("BoxMesh_cxt7r")
 
 [node name="Titre" type="Label3D" parent="." unique_id=485130576]

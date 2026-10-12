@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://dp8wv52n66tbj"]
+
+[ext_resource type="Script" uid="uid://c0rn8tqubfrxl" path="res://scripts/flower/flower.gd" id="1_08bim"]
+[ext_resource type="PackedScene" uid="uid://bwpal4jjo5u25" path="res://assets/rose_green/scene.gltf" id="2_2cl2u"]
+
+[node name="RoseG" type="Node3D" unique_id=1419264972]
+script = ExtResource("1_08bim")
+
+[node name="Model" parent="." unique_id=402684470 instance=ExtResource("2_2cl2u")]
+transform = Transform3D(0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02, 0.0241853, 0, -1.015418)
+
+[node name="PistilMarker" type="Marker3D" parent="." unique_id=1259642027]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0583128, 0.11226098, 0.004)
