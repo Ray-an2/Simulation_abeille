@@ -39,7 +39,7 @@ signal foraging_finished(flower: Flower)
 enum State { AVAILABLE, BUSY, EMPTY }
 
 ## Espèces disponibles, déduites du nom de la scène instanciée.
-enum Species { LILY, ROSE_BLUE, ROSE_RED }
+enum Species { LILY, ROSE_BLUE, ROSE_RED, ROSE_GREEN, ROSE_PINK }
 
 # =============================================================================
 # Constantes
@@ -51,9 +51,11 @@ enum Species { LILY, ROSE_BLUE, ROSE_RED }
 ## la durée de la journée simulée. Valeurs de réglage, reprises des anciens
 ## temps de recharge : l'ordre des espèces est conservé.
 const SECRETION_TAU := {
-	Species.LILY: 2.0,
-	Species.ROSE_BLUE: 4.0,
-	Species.ROSE_RED: 6.0,
+	Species.LILY: 4.0,			# moy
+	Species.ROSE_BLUE: 4.0,		# moy
+	Species.ROSE_RED: 2.0,		# rapide
+	Species.ROSE_GREEN: 8.0,	# long
+	Species.ROSE_PINK: 1.0,		# très rapide
 }
 
 ## Écart (unités) au stock maximal en dessous duquel la fleur est considérée
@@ -63,9 +65,11 @@ const FULL_EPSILON := 0.05
 
 ## Libellés de l'espèce affichés dans l'interface (infobulles, tableau de bord).
 const SPECIES_LABELS := {
-	Species.LILY: "Lys",
-	Species.ROSE_BLUE: "Rose bleue",
-	Species.ROSE_RED: "Rose rouge",
+	Species.LILY: "Lys",				# Référence
+	Species.ROSE_BLUE: "Rose bleue", 	# Riche mais loin
+	Species.ROSE_RED: "Rose rouge", 	# Pauvre mais près
+	Species.ROSE_GREEN: "Rose verte", 	# Riche mais vite épuisé
+	Species.ROSE_PINK: "Rose rose", 	# Abondante mais médiocre
 }
 
 ## Libellés de l'état affichés dans l'interface (infobulles, tableau de bord).
@@ -312,5 +316,9 @@ func _detect_species() -> Species:
 			return Species.ROSE_BLUE
 		"roser":
 			return Species.ROSE_RED
+		"roseg":
+			return Species.ROSE_GREEN
+		"rosep":
+			return Species.ROSE_PINK
 	push_warning("Flower: espèce inconnue pour la scène '%s', Lys par défaut." % scene_name)
 	return Species.LILY
