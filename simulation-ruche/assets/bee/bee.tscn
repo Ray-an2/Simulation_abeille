@@ -37,9 +37,9 @@ transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0
 stream = ExtResource("3_5g3tm")
 attenuation_model = 1
 volume_db = -10.0
-unit_size = 5.0
-max_db = -10.0
-max_distance = 1.5
+unit_size = 2.0
+max_db = 0.0
+max_distance = 35.0
 bus = &"Bees"
 
 [node name="HeadMarker" type="Marker3D" parent="." unique_id=95220703]

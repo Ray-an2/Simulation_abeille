@@ -608,3 +608,36 @@ func _update_buzz_volume(delta: float) -> void:
 		target = buzz_single_db + linear_to_db(sqrt(float(bees_inside)))
 	# Lissage exponentiel, indépendant du framerate
 	_buzz.volume_db = lerpf(_buzz.volume_db, target, 1.0 - exp(-buzz_smoothing * delta))
+	
+# =============================================================================
+# Lecture (appelé par l'interface)
+# =============================================================================
+
+## Nombre de receveuses occupées parmi les [param count] premières.
+## Une receveuse jamais sollicitée n'a pas encore de case dans _receiver_free_at :
+## elle est libre, d'où le mini().
+func get_busy_receiver_count(count: int) -> int:
+	var busy := 0
+	for i in mini(count, _receiver_free_at.size()):
+		if _receiver_free_at[i] > _clock:
+			busy += 1
+	return busy
+
+## Nombre total de suiveuses, toutes danses confondues.
+func get_follower_total() -> int:
+	var total := 0
+	for dancer in _followers:
+		total += _followers[dancer]
+	return total
+
+## Danses en cours par espèce annoncée (Flower.Species → nombre de danseuses).
+## Dictionnaire non typé : les clés sont les valeurs entières de l'enum.
+func get_dances_by_species() -> Dictionary:
+	var counts := {}
+	for dancer: Bee in _dances:
+		var flower := _dances[dancer]
+		# Danseuse ou fleur supprimée en pleine danse : exit() n'a pas été appelée
+		if not is_instance_valid(dancer) or not is_instance_valid(flower):
+			continue
+		counts[flower.species] = counts.get(flower.species, 0) + 1
+	return counts

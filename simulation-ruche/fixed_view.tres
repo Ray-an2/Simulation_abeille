@@ -4,4 +4,5 @@
 
 [resource]
 script = ExtResource("1_yq5rk")
+near = 0.00999999999999999
 metadata/_custom_type_script = "uid://b8hhnqsugykly"
