@@ -66,7 +66,7 @@ class_name Simulation extends Node3D
 
 ## Probabilité par seconde qu'une abeille en IDLE parte explorer.
 ## À multiplier par delta dans IdleState, pour ne pas dépendre de la fréquence d'images.
-@export var p_scout: float = 0.005
+@export var p_scout: float = 0.002
 
 ## Rayon (unités) de la zone explorée autour de la ruche en SCOUT.
 @export var scout_radius: float = 70.0
@@ -238,6 +238,16 @@ class_name Simulation extends Node3D
 
 ## Quantité de nectar récoltée par une abeille à chaque prélèvement.
 @export var harvest_amount := 5.0
+
+## Stock auquel une fleur fermée (EMPTY) rouvre. Supérieur au seuil : la fleur
+## rouvre avec quelques prélèvements d'avance au lieu de clignoter entre
+## AVAILABLE et EMPTY. Valeur de réglage.
+@export var reopen_level := 40.0
+
+## Fraction du débit de sécrétion conservée la nuit (0 = arrêt, 1 = comme le jour).
+## La sécrétion nocturne est nettement plus faible chez la plupart des espèces,
+## sans être nulle. Valeur de réglage, non mesurée.
+@export_range(0.0, 1.0) var night_secretion_factor := 0.2
 
 
 @export_group("Qualité de source")

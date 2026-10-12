@@ -405,9 +405,15 @@ func _flower_info(flower: Flower) -> String:
 	lines.append("État : %s" % flower.get_state_label())
 	lines.append("Stock : %.0f / %.0f (seuil %.0f)" % [flower.resource, sim.max_resource, sim.threshold])
 	lines.append("Rentabilité : %.2f" % flower.get_profitability())
+	# Plus de durée de recharge fixe : la sécrétion est continue. Pour une fleur
+	# fermée, on affiche le temps estimé avant qu'elle rouvre (reopen_level).
 	if flower.state == Flower.State.EMPTY:
-		lines.append("Recharge : reste %s sur %s" % [
-			_format_hours(flower.get_recharge_remaining()), _format_hours(flower.recharge_time)])
+		var remaining := flower.get_reopen_remaining()
+		if is_inf(remaining):
+			lines.append("Réouverture : sécrétion arrêtée")
+		else:
+			lines.append("Réouverture à %.0f : dans %s environ" % [
+				sim.reopen_level, _format_hours(remaining)])
 	# Réservée dès qu'une abeille décide d'y aller : une fleur « Disponible »
 	# peut donc déjà être visée par une abeille en vol
 	var claimant := flower.get_claimant()
