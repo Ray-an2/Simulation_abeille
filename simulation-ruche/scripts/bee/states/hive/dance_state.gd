@@ -214,7 +214,8 @@ func update(delta: float) -> BeeState:
 			if bee.is_near(_run_start, EXACT_RADIUS):
 				# Sur la piste : la danse devient visible des abeilles en attente
 				bee.hive.start_dance(bee, bee.known_flower)
-				_start_waggle()
+				# Angle recalculé : le soleil a pu tourner pendant la marche vers la piste
+				_begin_run(_run_start)
 
 		Phase.WAGGLE:
 			_remaining -= delta
@@ -241,11 +242,10 @@ func update(delta: float) -> BeeState:
 			# hop_towards() ne règle pas les pattes : cadence calée sur la vitesse réelle
 			bee.play_walk(_loop_speed / bee.simulation.walk_speed)
 			if _loop_phi >= PI and bee.is_near(_next_start, EXACT_RADIUS):
-				# Course suivante, et boucle suivante de l'autre côté : le huit
-				_run_start = _next_start
-				_run_end = bee.hive.clamp_to_comb(_run_start + _dir * _run_length)
+				# Course suivante, et boucle suivante de l'autre côté : le huit.
+				# La direction suit le soleil d'une course à l'autre.
 				_loop_sign = -_loop_sign
-				_start_waggle()
+				_begin_run(_next_start)
 
 	return null
 
@@ -281,21 +281,9 @@ func _pick_floor_start() -> Vector3:
 func _build_figure(start: Vector3) -> void:
 	var sim := bee.simulation
 
-	# Verticale du cadre : la gravité projetée dans son plan. Sur un cadre vertical,
-	# elle remplace le soleil comme référence, comme pour l'abeille réelle.
-	var up := Vector3.UP.slide(_normal)
-	if up.is_zero_approx():
-		# Cadre posé à plat (ne devrait pas arriver) : axe arbitraire dans le plan
-		up = Vector3.FORWARD.slide(_normal)
-	up = up.normalized()
-
-	# Angle positif = source à gauche du soleil vu de dessus (signed_angle_to autour
-	# de +Y). Une rotation positive autour de la normale amène la verticale vers
-	# normale × verticale, c'est-à-dire à gauche pour qui regarde le cadre :
-	# même sens que sur le terrain.
-	_dir = up.rotated(_normal, bee.angle)
-	# Rotation de +90° autour de la normale : côté gauche de la course
-	_side = _normal.cross(_dir).normalized()
+		# Direction provisoire, pour placer la première course sur la piste ;
+	# elle sera recalculée au départ de la course (_begin_run)
+	_update_direction()
 
 	# Durée de la course : interpolée entre les deux bornes selon la distance,
 	# puis convertie en longueur à la vitesse de la course
@@ -376,6 +364,39 @@ func _solve_half_width(a: float, length: float) -> float:
 		else:
 			hi = mid
 	return 0.5 * (lo + hi)
+
+## Verticale du cadre : la gravité projetée dans son plan. Sur un cadre vertical,
+## elle remplace le soleil comme référence, comme pour l'abeille réelle.
+func _comb_up() -> Vector3:
+	var up := Vector3.UP.slide(_normal)
+	if up.is_zero_approx():
+		# Cadre posé à plat (ne devrait pas arriver) : axe arbitraire dans le plan
+		up = Vector3.FORWARD.slide(_normal)
+	return up.normalized()
+
+## Recalcule l'angle soleil → source à l'instant présent, puis la direction
+## de la course. Appelée au début de chaque course : le soleil tourne pendant
+## la danse (environ 15° par heure simulée, soit 1 h toutes les 25 s avec une
+## journée de 600 s), et la danseuse réelle corrige son angle d'une course
+## à l'autre (von Frisch). bee.angle est mis à jour pour que le HUD reste juste.
+func _update_direction() -> void:
+	bee.angle = bee.simulation.get_dance_angle(
+			bee.known_flower.global_position, bee.hive.global_position)
+	# Angle positif = source à gauche du soleil vu de dessus. Une rotation positive
+	# autour de la normale amène la verticale vers la gauche pour qui regarde
+	# le cadre : même sens que sur le terrain.
+	_dir = _comb_up().rotated(_normal, bee.angle)
+	# Rotation de +90° autour de la normale : côté gauche de la course
+	_side = _normal.cross(_dir).normalized()
+
+## Démarre une course frétillante depuis [param start], dans la direction
+## du soleil à cet instant.
+func _begin_run(start: Vector3) -> void:
+	
+	_update_direction()
+	_run_start = start
+	_run_end = bee.hive.clamp_to_comb(_run_start + _dir * _run_length)
+	_start_waggle()
 
 # =============================================================================
 # Frétillement
