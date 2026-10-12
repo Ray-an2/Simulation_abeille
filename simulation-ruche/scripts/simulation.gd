@@ -74,8 +74,11 @@ class_name Simulation extends Node3D
 ## Durée maximale (s) d'exploration en SCOUT avant de rentrer bredouille.
 @export var scout_timeout: float = 90.0
 
-## Distance (unités) à laquelle une abeille en SCOUT repère une fleur.
-@export var perception_radius: float = 15.0
+## Angle apparent minimal (degrés) sous lequel une abeille repère une fleur.
+## 5° : détection par le contraste (canal vert des photorécepteurs),
+## 15° : détection par la couleur seule (Giurfa et al. 1996).
+## Portée qui en découle : diamètre / (2 tan(angle / 2)), soit ≈ 11,4 × diamètre à 5°.
+@export_range(1.0, 30.0) var detection_angle_deg: float = 5.0
 
 @export_group("Butinage")
 

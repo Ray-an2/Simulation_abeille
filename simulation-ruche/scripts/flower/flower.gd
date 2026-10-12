@@ -84,6 +84,12 @@ const STATE_LABELS := {
 ## et non sur chacune des trente instances.
 @export var pollen_material: StandardMaterial3D
 
+## Diamètre (m) de la corolle, partie visible de loin par l'abeille.
+## Réglé une fois dans la scène de l'espèce (lys.tscn, roseb.tscn, roser.tscn),
+## à mesurer sur le modèle : les feuilles ne comptent pas, vertes sur fond vert,
+## elles ne ressortent pas pour l'œil de l'abeille.
+@export var corolla_diameter: float = 0.08
+
 # =============================================================================
 # État
 # =============================================================================
