@@ -2,21 +2,18 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c14w1x4y5bm06"
-path.s3tc="res://.godot/imported/hive_9.png-b5ee6ee0c9b2cfd0c9581210aa54ee51.s3tc.ctex"
-path.etc2="res://.godot/imported/hive_9.png-b5ee6ee0c9b2cfd0c9581210aa54ee51.etc2.ctex"
+uid="uid://6sgnj12yj61t"
+path.s3tc="res://.godot/imported/others_0007_ao_2k.jpg-114e6efc6970b4f1b74aba66d17e97cb.s3tc.ctex"
+path.etc2="res://.godot/imported/others_0007_ao_2k.jpg-114e6efc6970b4f1b74aba66d17e97cb.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
-generator_parameters={
-"md5": "02d4f95fae5b0782efb0c787c40222d5"
-}
 
 [deps]
 
-source_file="res://assets/hive/textures/hive_9.png"
-dest_files=["res://.godot/imported/hive_9.png-b5ee6ee0c9b2cfd0c9581210aa54ee51.s3tc.ctex", "res://.godot/imported/hive_9.png-b5ee6ee0c9b2cfd0c9581210aa54ee51.etc2.ctex"]
+source_file="res://assets/hive/others_0007_ao_2k.jpg"
+dest_files=["res://.godot/imported/others_0007_ao_2k.jpg-114e6efc6970b4f1b74aba66d17e97cb.s3tc.ctex", "res://.godot/imported/others_0007_ao_2k.jpg-114e6efc6970b4f1b74aba66d17e97cb.etc2.ctex"]
 
 [params]
 

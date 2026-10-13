@@ -91,6 +91,15 @@ const APPROACH_CONE_COS := 0.5
 ## exactement sa cible (même raison que l'ancien LANDING_RADIUS de ReturnState).
 const EXACT_RADIUS := 0.001
 
+## Part de l'inclinaison de la surface que l'abeille reprend en vol (0 = reste droite,
+## 1 = alignée sur la surface). Valeur de réglage : l'étude d'Evangelista et al. (2010)
+## montre que le corps s'incline avec la surface, mais je n'ai pas le chiffre exact.
+const HOVER_TILT_FACTOR := 0.5
+
+## Inclinaison maximale (rad) du haut de l'abeille par rapport à la verticale en vol.
+## Au-delà, elle ne pourrait plus se sustenter (fleurs pendantes). PI / 2 = 90°.
+const HOVER_MAX_TILT := PI / 2.0
+
 # =============================================================================
 # Types
 # =============================================================================
@@ -138,6 +147,10 @@ var _hover_phase := Vector3.ZERO
 ## jusqu'à la pose.
 var _arrival_dir := Vector3.ZERO
 
+## Direction de départ du décollage : normale de la surface quittée.
+## Planche : verticale. Fleur : normale de la corolle, qui peut être inclinée.
+var _takeoff_normal := Vector3.UP
+
 # =============================================================================
 # Transitions communes au super-état
 # =============================================================================
@@ -156,12 +169,17 @@ func interrupt() -> BeeState:
 ## À appeler dans enter(). Démarre un décollage si l'abeille est posée
 ## (planche à la sortie de LEAVE, fleur à la sortie de FORAGE). Si elle vole déjà
 ## (SCOUT → RETURN, GO → SCOUT), le vol continue directement.
+## Le décollage part selon la normale de la surface quittée, mémorisée ici :
+## verticale sur la planche, axe de la corolle sur une fleur inclinée.
 func begin_flight() -> void:
 	reset_landing()
 	_taking_off = bee.is_landed()
 	if _taking_off:
 		_takeoff_speed = TAKEOFF_START_SPEED
 		_takeoff_traveled = 0.0
+		# Posée, l'abeille a son haut aligné sur la normale de la surface
+		# (TOUCHDOWN la pose avec up = normale) : on repart dans cet axe
+		_takeoff_normal = bee.global_basis.y.normalized()
 		# Animation de décollage, puis battement d'ailes en boucle quand elle est finie
 		bee.play_animation(&"_bee_takeoff")
 		bee.queue_animation(&"_bee_hover")
@@ -186,10 +204,10 @@ func update_takeoff(toward: Vector3, delta: float) -> bool:
 	# Direction de fin de décollage : vers la cible, encore en montée
 	var end_dir := (heading + Vector3.UP * TAKEOFF_CLIMB).normalized()
 
-	# Direction du mouvement : verticale au départ, end_dir à la fin.
+	# # Direction du mouvement : normale de la surface quittée au départ, end_dir à la fin
 	# smoothstep : l'inclinaison commence et finit en douceur.
 	var t := smoothstep(0.0, 1.0, _takeoff_traveled / TAKEOFF_DISTANCE)
-	var dir := Vector3.UP.lerp(end_dir, t).normalized()
+	var dir := _takeoff_normal.lerp(end_dir, t).normalized()
 
 	# Vitesse croissante, même accélération que fly_towards()
 	_takeoff_speed = move_toward(_takeoff_speed, sim.fly_speed, sim.fly_acceleration * delta)
@@ -265,9 +283,9 @@ func update_landing(target: Vector3, normal: Vector3, hover_time: float,
 			# finit perpendiculaire à la surface et, si imposé, dans l'axe d'arrivée
 			var aim := target + normal * (dist * APPROACH_CURVE) + lead
 
-			# Le haut de l'abeille passe progressivement de la verticale à la normale
+			# Le haut de l'abeille passe progressivement de la verticale à l'inclinaison de volale
 			var k := 1.0 - clampf(dist / _final_start_dist, 0.0, 1.0)
-			var up := Vector3.UP.slerp(normal, k)
+			var up := Vector3.UP.slerp(_flight_up(normal), k)
 
 			# Regard dans le sens du mouvement, ramené dans le plan perpendiculaire à up
 			var facing := (aim - bee.global_position).slide(up)
@@ -302,7 +320,8 @@ func update_landing(target: Vector3, normal: Vector3, hover_time: float,
 			var yaw := HOVER_WOBBLE_YAW * envelope \
 					* _wobble(_hover_t, 0.7, 1.6, _hover_phase.x)
 			var facing := _landing_facing(normal, approach_dir).rotated(normal, yaw)
-			bee.hop_towards(aim, HOVER_WOBBLE_SPEED, facing, normal, delta)
+			# Corps incliné vers la surface, sans s'y aligner : l'alignement se fait au contact
+			bee.hop_towards(aim, HOVER_WOBBLE_SPEED, facing, _flight_up(normal), delta)
 			if _hover_left <= 0.0:
 				_landing = Landing.TOUCHDOWN
 
@@ -313,6 +332,22 @@ func update_landing(target: Vector3, normal: Vector3, hover_time: float,
 				_landing = Landing.DONE
 
 	return _landing == Landing.DONE
+	
+## Vecteur haut de l'abeille en vol face à une surface de normale [param normal] :
+## incliné vers la normale, mais seulement en partie et dans la limite de HOVER_MAX_TILT.
+## L'alignement complet se fait au contact (TOUCHDOWN).
+func _flight_up(normal: Vector3) -> Vector3:
+	var angle := Vector3.UP.angle_to(normal)
+	# Surface horizontale : rien à incliner
+	if angle < 0.0001:
+		return Vector3.UP
+	var tilt := minf(angle * HOVER_TILT_FACTOR, HOVER_MAX_TILT)
+	# Axe de rotation perpendiculaire à la verticale et à la normale.
+	# Normale pile vers le bas (fleur retournée) : axe indéfini, on en prend un arbitraire
+	var axis := Vector3.UP.cross(normal)
+	if axis.is_zero_approx():
+		axis = Vector3.RIGHT
+	return Vector3.UP.rotated(axis.normalized(), tilt)
 
 # =============================================================================
 # Utilitaires internes

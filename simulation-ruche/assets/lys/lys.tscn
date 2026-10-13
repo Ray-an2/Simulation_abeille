@@ -11,4 +11,4 @@ pollen_material = ExtResource("2_tsvs8")
 [node name="Model" parent="." unique_id=1128648294 instance=ExtResource("1_g1gxa")]
 
 [node name="PistilMarker" type="Marker3D" parent="." unique_id=1844521211]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -0.017812924, 0.14676578, 0.019329846)
+transform = Transform3D(-1, 0, -8.742278e-08, -7.5710346e-08, 0.49999997, 0.86602545, 4.3711385e-08, 0.86602545, -0.49999997, -0.017812924, 0.15848435, 0.015071936)

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://bm7pemmjdp81t"]
 
-[ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/materials/M_Hive_Wood.tres" id="1_kql51"]
+[ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/M_Hive_Wood.tres" id="1_kql51"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_cxt7r"]
 top_radius = 0.05

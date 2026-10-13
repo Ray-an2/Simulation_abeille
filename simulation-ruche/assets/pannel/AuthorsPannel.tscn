@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c5l23ju3fs6yg"]
 
-[ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/materials/M_Hive_Wood.tres" id="1_m8h2x"]
+[ext_resource type="Material" uid="uid://bsqkd4txyuigd" path="res://assets/hive/M_Hive_Wood.tres" id="1_m8h2x"]
 [ext_resource type="Material" uid="uid://cehfvdn0tvoh5" path="res://assets/textures/ground/marron.tres" id="2_kv8rd"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_cxt7r"]

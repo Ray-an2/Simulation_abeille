@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://8e317udc00tn"
-path.s3tc="res://.godot/imported/hive_6.png-70afaec83dbc143fa2c9ebb3b3cce1c5.s3tc.ctex"
-path.etc2="res://.godot/imported/hive_6.png-70afaec83dbc143fa2c9ebb3b3cce1c5.etc2.ctex"
+uid="uid://d0afbwqj2372c"
+path.s3tc="res://.godot/imported/hive_6.png-d2d86139afa9c976497a77230334e960.s3tc.ctex"
+path.etc2="res://.godot/imported/hive_6.png-d2d86139afa9c976497a77230334e960.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -15,8 +15,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/hive/hive_6.png"
-dest_files=["res://.godot/imported/hive_6.png-70afaec83dbc143fa2c9ebb3b3cce1c5.s3tc.ctex", "res://.godot/imported/hive_6.png-70afaec83dbc143fa2c9ebb3b3cce1c5.etc2.ctex"]
+source_file="res://assets/hive/textures/hive_6.png"
+dest_files=["res://.godot/imported/hive_6.png-d2d86139afa9c976497a77230334e960.s3tc.ctex", "res://.godot/imported/hive_6.png-d2d86139afa9c976497a77230334e960.etc2.ctex"]
 
 [params]
 

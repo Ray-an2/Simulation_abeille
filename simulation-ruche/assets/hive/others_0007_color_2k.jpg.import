@@ -2,21 +2,18 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://chnhue6mr1yuh"
-path.s3tc="res://.godot/imported/hive_5.png-5dd38c090ed119b4fb8e9bdab5d93713.s3tc.ctex"
-path.etc2="res://.godot/imported/hive_5.png-5dd38c090ed119b4fb8e9bdab5d93713.etc2.ctex"
+uid="uid://bme2cffeeop0p"
+path.s3tc="res://.godot/imported/others_0007_color_2k.jpg-f0d8ad2102aed15cb108e88e218bf00d.s3tc.ctex"
+path.etc2="res://.godot/imported/others_0007_color_2k.jpg-f0d8ad2102aed15cb108e88e218bf00d.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
-generator_parameters={
-"md5": "3c6246a8f12c1e6e2b97d93acd191742"
-}
 
 [deps]
 
-source_file="res://assets/hive/textures/hive_5.png"
-dest_files=["res://.godot/imported/hive_5.png-5dd38c090ed119b4fb8e9bdab5d93713.s3tc.ctex", "res://.godot/imported/hive_5.png-5dd38c090ed119b4fb8e9bdab5d93713.etc2.ctex"]
+source_file="res://assets/hive/others_0007_color_2k.jpg"
+dest_files=["res://.godot/imported/others_0007_color_2k.jpg-f0d8ad2102aed15cb108e88e218bf00d.s3tc.ctex", "res://.godot/imported/others_0007_color_2k.jpg-f0d8ad2102aed15cb108e88e218bf00d.etc2.ctex"]
 
 [params]
 
@@ -26,12 +23,12 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=1
+compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
-roughness/mode=1
-roughness/src_normal="res://assets/hive/hive_5.png"
+roughness/mode=0
+roughness/src_normal=""
 process/channel_remap/red=0
 process/channel_remap/green=1
 process/channel_remap/blue=2

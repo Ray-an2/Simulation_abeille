@@ -1,7 +1,0 @@
-[gd_resource type="StandardMaterial3D" format=3 uid="uid://bsqkd4txyuigd"]
-
-[resource]
-resource_name = "M_Hive_Wood"
-albedo_color = Color(0.54901963, 0.34509805, 0.1882353, 1)
-roughness = 0.9
-normal_enabled = true
