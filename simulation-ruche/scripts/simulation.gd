@@ -127,8 +127,18 @@ class_name Simulation extends Node3D
 ## Si la danse s'arrête avant, l'abeille retourne en IDLE.
 @export var watch_min_duration: float = 12.0
 
-## Rentabilité au-dessus de laquelle l'abeille danse après déchargement.
+## Seuil de danse quand la ruche est saturée (attente d'une receveuse ≥ max_wait_time).
+## Le seuil réel descend jusqu'à dance_threshold_min quand l'abeille est déchargée
+## sans attendre : la colonie qui récolte peu recrute même pour une source moyenne.
 @export_range(0.0, 1.0) var profitability_high: float = 0.6
+
+## Seuil de danse quand une receveuse prend l'abeille en charge sans attente.
+## 0,35 : une efficacité énergétique d'environ 3 suffit pour danser.
+@export_range(0.0, 1.0) var dance_threshold_min: float = 0.35
+
+## Écart maximal (±) du seuil de danse d'une abeille à l'autre.
+## Valeur de réglage : Seeley décrit cette variabilité sans en donner une mesure simple.
+@export_range(0.0, 0.3) var dance_threshold_spread: float = 0.05
 
 ## Rentabilité en dessous de laquelle l'abeille abandonne la source (retour en IDLE).
 ## Entre les deux seuils, elle repart sans danser.
@@ -282,24 +292,38 @@ class_name Simulation extends Node3D
 @export var sugar_energy := 16.5
 
 ## Facteur d'échelle entre les distances de la scène et celles du terrain réel.
-## Une butineuse va couramment à plusieurs centaines de mètres : à l'échelle de
-## la scène, le coût du vol serait négligeable et la distance ne compterait plus.
-## 50 : une source à 25 m « coûte » comme une source à 1,25 km.
-@export var distance_scale := 50.0
+## Une butineuse va couramment à 1 ou 2 km de la ruche : à l'échelle de la scène,
+## le coût du vol serait négligeable et la distance ne compterait plus.
+## 30 : le bord de la zone explorée (scout_radius = 70 m) vaut environ 2 km.
+@export var distance_scale := 30.0
 
 ## Coût énergétique du vol (J/m). Ordre de grandeur : environ 45 mW pour une
 ## ouvrière de 0,1 g (soit environ 10 mg de sucre par heure de vol) à 6-7 m/s.
 @export var flight_cost_per_m := 0.0065
 
-## Puissance (W) dépensée dans le massif : prélèvements, petits vols entre fleurs.
-## Estimation, un peu moins de la moitié du vol de croisière. Valeur de réglage.
-@export var forage_power := 0.02
+## Masse (mg) d'une ouvrière à jabot vide : environ 80 à 100 mg.
+## Le coût du vol est multiplié par (1 + charge / bee_body_mass).
+@export var bee_body_mass := 90.0
 
-## Efficacité énergétique (gain - coût) / coût en dessous de laquelle la rentabilité vaut 0.
-@export var efficiency_min := 5.0
+## Part du surcoût théorique de la charge réellement payée en vol.
+## 1 : puissance proportionnelle à la masse totale (hypothèse des modèles
+## d'optimisation, dont Schmid-Hempel, Kacelnik & Houston 1985).
+## 0,15 : mesures de Feuerbacher et al. (2003), environ 6 % de plus en vol
+## stationnaire pour une charge de nectar de 40 % de la masse corporelle.
+## Le sujet reste débattu : à présenter comme un paramètre de l'étude.
+@export_range(0.0, 1.0) var load_cost_factor := 0.15
 
-## Efficacité énergétique à partir de laquelle la rentabilité vaut 1.
-@export var efficiency_max := 50.0
+## Puissance (W) dépensée dans le massif à jabot vide : surtout des vols courts
+## d'une fleur à l'autre, pris égaux au vol de croisière. Valeur de réglage.
+@export var forage_power := 0.045
+
+## Départ anticipé : l'abeille rentre avant d'avoir rempli son jabot si une fleur
+## de plus ferait baisser l'efficacité de son trajet (Schmid-Hempel, Kacelnik
+## & Houston, 1985). Désactivable pour comparer les deux comportements.
+@export var efficient_stop := true
+
+## Efficacité énergétique (gain - coût) / coût à partir de laquelle la rentabilité vaut 1.
+@export var efficiency_max := 60.0
 
 
 # ============================================================

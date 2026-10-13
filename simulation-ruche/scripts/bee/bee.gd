@@ -195,6 +195,10 @@ var forage_time: float = 0.0
 ## prélèvement (l'abeille goûte le nectar), vidée en UNLOAD.
 var sugar: float = 0.0
 
+## Masse (mg) du nectar transporté dans le jabot. Cumulée en FORAGE, vidée en UNLOAD.
+## Alourdit l'abeille : le vol de retour et les vols entre fleurs coûtent plus cher.
+var load_mass: float = 0.0
+
 ## true si la nuit a écourté le butinage de ce trajet : UNLOAD ne réévalue
 ## pas la source sur un jabot incomplet. Remis à false en UNLOAD.
 var trip_cut_short: bool = false
@@ -216,6 +220,11 @@ var surface_normal: Vector3 = Vector3.ZERO
 ## Hauteur du soleil (degrés) en dessous de laquelle cette abeille cesse de voler.
 ## Tirée à la création : les abeilles ne s'arrêtent pas toutes au même moment.
 var light_threshold: float = 0.0
+
+## Écart individuel (tiré à la création) ajouté au seuil de danse : à source égale,
+## certaines butineuses dansent, d'autres non (Seeley). La réponse de la colonie
+## devient graduelle au lieu de basculer d'un coup.
+var dance_threshold_offset: float = 0.0
 
 # =============================================================================
 # État interne
@@ -337,6 +346,10 @@ func _ready() -> void:
 	# Seuil de lumière propre à cette abeille
 	light_threshold = randf_range(simulation.light_threshold_min,
 			simulation.light_threshold_max)
+	
+	# Écart au seuil de danse propre à cette abeille
+	dance_threshold_offset = randf_range(-simulation.dance_threshold_spread,
+			simulation.dance_threshold_spread)
 
 	# Taille maximale des pelotes : celle réglée dans bee.tscn
 	for p in _pollen:
@@ -629,6 +642,24 @@ func forget_source() -> void:
 	known_profitability = 0.0
 	known_efficiency = 0.0
 	recruited_by = null
+	
+## Efficacité énergétique (gain - coût) / coût d'un trajet. Utilisée par UNLOAD
+## pour juger la source, et par FORAGE pour décider d'un départ anticipé.
+## [param sugar] : sucre transporté (mg). [param load] : masse du nectar au retour (mg).
+## [param distance] : distance à plat ruche - massif (m, échelle de la scène).
+## [param forage_time] : temps passé dans le massif (s).
+## La puissance de vol croît avec la masse transportée, d’un facteur réglable (load_cost_factor) :
+##   - aller à vide, retour chargé : (2 + charge / masse corporelle) trajets simples ;
+##   - butinage : charge moyenne du trajet, la moitié de la charge finale.
+## Négative si le trajet a coûté plus qu'il n'a rapporté.
+func trip_efficiency(sugar: float, load: float, distance: float, forage_time: float) -> float:
+	var sim := simulation
+	var load_ratio := sim.load_cost_factor * load / maxf(sim.bee_body_mass, 1.0)
+	var one_way := distance * sim.distance_scale * sim.flight_cost_per_m
+	var flight_cost := one_way * (2.0 + load_ratio)
+	var forage_cost := forage_time * sim.forage_power * (1.0 + 0.5 * load_ratio)
+	var cost := maxf(flight_cost + forage_cost, 0.001)
+	return (sugar * sim.sugar_energy - cost) / cost
 
 # =============================================================================
 # Animation (appelé par les états)

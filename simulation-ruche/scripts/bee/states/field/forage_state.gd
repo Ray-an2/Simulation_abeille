@@ -12,8 +12,17 @@ class_name ForageState extends FieldState
 ##
 ## À chaque prélèvement, l'abeille ajoute à son jabot la quantité que la fleur
 ## a réellement donnée (moins sur une fleur entamée) et goûte le nectar :
-## elle cumule la masse de sucre transportée (bee.sugar). UNLOAD s'en sert
-## pour juger la source, sans jamais lire le stock des fleurs.
+## elle cumule la masse de sucre (bee.sugar) et la masse de nectar (bee.load_mass)
+## transportées. UNLOAD s'en sert pour juger la source, sans jamais lire le stock
+## des fleurs.
+##
+## Départ anticipé (efficient_stop dans Simulation) : après chaque prélèvement,
+## l'abeille compare l'efficacité de son trajet si elle rentrait maintenant à celle
+## qu'elle aurait après une fleur de plus, en supposant que cette fleur donnerait
+## autant que la dernière. Si la fleur de plus ferait baisser l'efficacité
+## (gain trop faible face au temps passé et au poids à ramener), elle rentre
+## avec un jabot incomplet. Comportement observé chez l'abeille domestique
+## (Schmid-Hempel, Kacelnik & Houston, 1985).
 ##
 ## known_flower n'est pas modifiée : elle reste la fleur d'arrivée dans le massif,
 ## celle que l'abeille dansera et vers laquelle GO la renverra.
@@ -48,6 +57,10 @@ var _visited: Array[Flower] = []
 ## Nombre de prélèvements faits sur la fleur en cours.
 var _harvests_here := 0
 
+## Nombre total de prélèvements pendant ce trajet. Sert à estimer la durée
+## moyenne d'un prélèvement (vols entre fleurs compris) pour le départ anticipé.
+var _harvests_total := 0
+
 ## Point de pose sur la fleur visée pendant HOP (pistil).
 var _target: Vector3
 
@@ -69,6 +82,7 @@ var _yield := 0.0
 func enter() -> void:
 	# Un seul passage en FORAGE par trajet : le chrono de butinage repart de zéro
 	bee.forage_time = 0.0
+	_harvests_total = 0
 	_visited.clear()
 	_flower = bee.known_flower
 	if is_instance_valid(_flower):
@@ -105,7 +119,7 @@ func interrupt() -> BeeState:
 
 func update(delta: float) -> BeeState:
 	# Chrono de butinage : temps passé dans le massif, compté dans le coût
-	# énergétique du trajet (UNLOAD)
+	# énergétique du trajet (UNLOAD et départ anticipé)
 	bee.forage_time += delta
 	if _phase == Phase.HOP:
 		return _update_hop(delta)
@@ -118,16 +132,22 @@ func update(delta: float) -> BeeState:
 	if _harvest_done:
 		_harvest_done = false
 		_harvests_here += 1
+		_harvests_total += 1
 		# Couleur de la fleur visitée, puis croissance de la pelote
 		bee.set_pollen_from(_flower)
 		var capacity := bee.simulation.forage_capacity
 		var drunk := minf(_yield, capacity - bee.nectar)
+		var c := _flower.sugar_concentration
 		bee.nectar += drunk
-		# L'abeille goûte le nectar : elle cumule le sucre qu'elle transporte
-		bee.sugar += Flower.sugar_in(drunk, _flower.sugar_concentration)
+		# L'abeille goûte le nectar : elle cumule le sucre et la masse transportés
+		bee.sugar += Flower.sugar_in(drunk, c)
+		bee.load_mass += Flower.nectar_mass(drunk, c)
 		bee.update_pollen()
 		# Jabot plein : retour à la ruche
 		if bee.nectar >= capacity:
+			return bee.return_home
+		# Une fleur de plus ferait baisser l'efficacité du trajet : retour anticipé
+		if bee.simulation.efficient_stop and _better_to_return(c):
 			return bee.return_home
 		# Assez prélevé sur cette fleur : on passe à la suivante du massif
 		if _harvests_here >= bee.simulation.harvests_per_flower:
@@ -151,6 +171,31 @@ func update(delta: float) -> BeeState:
 	else:
 		bee.play_animation(&"_bee_hover")
 	return null
+
+# =============================================================================
+# Départ anticipé
+# =============================================================================
+
+## true si un prélèvement de plus ferait baisser l'efficacité du trajet.
+## L'abeille ne connaît que ce qu'elle a vécu : la quantité donnée par la dernière
+## fleur ([param concentration] : celle du nectar goûté), la durée moyenne d'un
+## prélèvement depuis son arrivée dans le massif, et la distance qui la sépare
+## de la ruche (intégration du trajet).
+func _better_to_return(concentration: float) -> bool:
+	var sim := bee.simulation
+	var distance := sim.get_flat_distance(bee.hive.global_position, bee.global_position)
+
+	# Efficacité si l'abeille rentre maintenant
+	var now := bee.trip_efficiency(bee.sugar, bee.load_mass, distance, bee.forage_time)
+
+	# Efficacité estimée après un prélèvement de plus, aussi abondant que le dernier
+	var next_volume := minf(_yield, sim.forage_capacity - bee.nectar)
+	var avg_time := bee.forage_time / maxf(_harvests_total, 1)
+	var later := bee.trip_efficiency(
+			bee.sugar + Flower.sugar_in(next_volume, concentration),
+			bee.load_mass + Flower.nectar_mass(next_volume, concentration),
+			distance, bee.forage_time + avg_time)
+	return later < now
 
 # =============================================================================
 # Passage d'une fleur à l'autre

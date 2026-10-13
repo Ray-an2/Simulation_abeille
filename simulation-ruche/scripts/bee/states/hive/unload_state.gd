@@ -2,13 +2,24 @@ class_name UnloadState extends HiveState
 ## Déchargement du nectar sur le rayon, puis évaluation de la source visitée.
 ## Déroulé : marche jusqu'à un point du rayon -> file d'attente de la ruche ->
 ## transfert à une receveuse -> dépôt du nectar -> évaluation de la source.
-## Sorties :  1 (rentable) -> DANCE    0 (moyenne) -> GO    -1 (mauvaise ou vide) -> IDLE
+## Sorties : DANCE (source au-dessus du seuil de danse), GO (source gardée sans danse),
+##           IDLE (source abandonnée sous profitability_low).
+##
+## Seuil de danse variable (Seeley) : la butineuse ne connaît pas les réserves de la
+## colonie, mais elle perçoit le temps qu'elle met à trouver une receveuse.
+##   - attente courte : peu de nectar rentre, la colonie a besoin de recruter :
+##     seuil bas (dance_threshold_min), une source moyenne suffit ;
+##   - attente longue : la colonie est bien approvisionnée : seuil haut
+##     (profitability_high), seules les meilleures sources sont annoncées.
+## Chaque abeille ajoute son propre écart (Bee.dance_threshold_offset) : la réponse
+## de la colonie est graduelle, et non tout ou rien.
 ##
 ## Rentabilité : efficacité énergétique du trajet, (gain - coût) / coût, mesure
-## utilisée par Seeley pour relier la qualité d'une source à l'intensité de la danse.
+## utilisée par Seeley pour relier la qualité d'une source à l'intensité de la danse
+## (calcul dans Bee.trip_efficiency()).
 ##   - gain : énergie du sucre rapporté (volume × concentration, goûté en FORAGE) ;
-##   - coût : vol aller-retour (distance perçue par le flux optique) et temps
-##     passé dans le massif.
+##   - coût : vol aller à vide, retour chargé (distance perçue par le flux optique),
+##     et temps passé dans le massif.
 ## L'abeille n'utilise que ce qu'elle a mesuré elle-même : jamais le stock d'une fleur.
 ## L'épuisement d'une source lui parvient par un jabot moins rempli et un butinage
 ## plus long ; la distance, la concentration et la viscosité par le gain et le coût.
@@ -69,8 +80,10 @@ func update(delta: float) -> BeeState:
 			if _transfer_left > 0.0:
 				return null
 
-	# Sucre rapporté : relevé avant le vidage du jabot, il sert à l'évaluation
+	# Sucre et masse du chargement : relevés avant le vidage du jabot,
+	# ils servent à l'évaluation
 	var sugar := bee.sugar
+	var load := bee.load_mass
 
 	# Décharger le nectar dans la ruche
 	if bee.nectar > 0.0:
@@ -79,33 +92,40 @@ func update(delta: float) -> BeeState:
 		# Nectar déchargé : les pelotes disparaissent
 		bee.update_pollen()
 	bee.sugar = 0.0
+	bee.load_mass = 0.0
 
 	# Évaluer la source et choisir l'état suivant
-	var verdict := _evaluate_source(sugar)
+	var verdict := _evaluate_source(sugar, load)
+	if verdict == -1:
+		# Source mauvaise ou vide : l'abeille l'oublie
+		bee.forget_source()
+		return bee.idle
+
 	if verdict == 1:
-		# Saturation de la ruche : plus l'attente a été longue, moins l'abeille
-		# a envie de danser (durée de danse réduite, voire pas de danse du tout)
 		var sim := bee.simulation
 		var wait_ratio := clampf(_waited / sim.max_wait_time, 0.0, 1.0)
+		# Seuil de danse : bas si une receveuse l'a prise en charge tout de suite,
+		# haut si elle a attendu longtemps, plus son écart individuel
+		var threshold := lerpf(sim.dance_threshold_min, sim.profitability_high, wait_ratio) \
+				+ bee.dance_threshold_offset
+		# Saturation de la ruche : l'attente réduit aussi la durée de la danse
 		var dance_quality := bee.known_profitability * (1.0 - sim.wait_penalty * wait_ratio)
-		if dance_quality >= sim.profitability_high:
+		if dance_quality >= threshold:
 			bee.known_profitability = dance_quality   # DANCE : durée proportionnelle
 			return bee.dance
-		# Trop de monde à la ruche : elle repart sans danser.
-		# Sortie à pied jusqu'à la planche, puis vol vers la source.
-		return go_out_if_day(bee.go)
-	if verdict == 0:
-		# Source moyenne : elle y retourne sans danser, en passant par la planche
-		return go_out_if_day(bee.go)
 
-	# Source mauvaise ou vide : l'abeille l'oublie
-	bee.forget_source()
-	return bee.idle
+	# Source gardée sans danse (sous le seuil du moment, ou rien de nouveau appris) :
+	# sortie à pied jusqu'à la planche, puis vol vers la source
+	return go_out_if_day(bee.go)
 
 
 ## Calcule la rentabilité de la source (0 à 1) à partir de [param sugar], masse
-## de sucre (mg) rapportée, et renvoie 1, 0 ou -1.
-func _evaluate_source(sugar: float) -> int:
+## de sucre (mg) rapportée, et de [param load], masse du nectar (mg) transporté
+## au retour. Renvoie :
+##    1 : source évaluée et gardée, la danse dépend du seuil du moment ;
+##    0 : rien de nouveau appris pendant ce trajet, source gardée sans danse ;
+##   -1 : source inconnue ou trop peu rentable, à abandonner.
+func _evaluate_source(sugar: float, load: float) -> int:
 	var sim := bee.simulation
 	var flower := bee.known_flower
 
@@ -135,39 +155,24 @@ func _evaluate_source(sugar: float) -> int:
 		return 0
 
 	# Efficacité énergétique du trajet
-	bee.known_efficiency = _energetic_efficiency(sugar, bee.distance, forage_time)
+	bee.known_efficiency = bee.trip_efficiency(sugar, load, bee.distance, forage_time)
 	bee.known_profitability = _efficiency_to_profitability(bee.known_efficiency)
 
-	# Seuils : au-dessus de high on danse, en dessous de low on abandonne
-	if bee.known_profitability >= sim.profitability_high:
-		return 1
+	# Sous le seuil bas, l'abeille abandonne la source. Au-dessus, la danse est
+	# décidée dans update() selon l'attente à la ruche (seuil variable).
 	if bee.known_profitability < sim.profitability_low:
 		return -1
-	return 0
-
-
-## Efficacité énergétique (gain - coût) / coût d'un trajet : [param sugar] mg
-## de sucre rapportés d'une source à [param distance] m (à l'échelle de la scène),
-## après [param forage_time] s passées dans le massif.
-## Négative si le trajet a coûté plus qu'il n'a rapporté (jabot vide).
-func _energetic_efficiency(sugar: float, distance: float, forage_time: float) -> float:
-	var sim := bee.simulation
-	var gain := sugar * sim.sugar_energy
-	# Vol aller-retour, distance ramenée à l'échelle réelle du terrain de butinage
-	var flight_cost := 2.0 * distance * sim.distance_scale * sim.flight_cost_per_m
-	var forage_cost := forage_time * sim.forage_power
-	var cost := maxf(flight_cost + forage_cost, 0.001)
-	return (gain - cost) / cost
+	return 1
 
 
 ## Ramène une efficacité énergétique entre 0 et 1, sur une échelle logarithmique :
-## 0 à efficiency_min et en dessous, 1 à efficiency_max et au-dessus.
-## Le logarithme compare les sources par rapports et non par différences :
-## passer de 5 à 10 compte autant que passer de 25 à 50 (choix de modélisation).
+## 0 quand le trajet n'a rien rapporté de net (efficacité nulle ou négative),
+## 1 à efficiency_max et au-dessus.
+## log(1 + e) : nul en 0, puis compare les sources par rapports plutôt que par
+## différences (choix de modélisation). Avec efficiency_max = 60 :
+## 0,2 (abandon) vers e ≈ 1,3 ; 0,6 (danse) vers e ≈ 11.
 func _efficiency_to_profitability(efficiency: float) -> float:
-	var sim := bee.simulation
-	var e_min := maxf(sim.efficiency_min, 0.001)
-	var e_max := maxf(sim.efficiency_max, e_min * 1.001)
-	if efficiency <= e_min:
+	if efficiency <= 0.0:
 		return 0.0
-	return clampf(log(efficiency / e_min) / log(e_max / e_min), 0.0, 1.0)
+	var e_max := maxf(bee.simulation.efficiency_max, 0.001)
+	return clampf(log(1.0 + efficiency) / log(1.0 + e_max), 0.0, 1.0)

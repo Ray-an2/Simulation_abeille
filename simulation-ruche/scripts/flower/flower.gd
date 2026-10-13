@@ -274,12 +274,16 @@ func get_viscosity_factor() -> float:
 	var c_opt := maxf(simulation.optimal_concentration, 0.01)
 	return exp((sugar_concentration - simulation.reference_concentration) / c_opt)
 
-## Masse de sucre (mg) contenue dans [param volume] µL de nectar à la concentration
-## massique [param concentration]. La masse volumique d'une solution de saccharose
-## croît avec la concentration : environ 1 + 0,43·c g/mL (1,09 à 20 %, 1,17 à 40 %,
+## Masse (mg) de [param volume] µL de nectar à la concentration massique
+## [param concentration]. La masse volumique d'une solution de saccharose croît
+## avec la concentration : environ 1 + 0,43·c g/mL (1,09 à 20 %, 1,17 à 40 %,
 ## 1,26 à 60 %, moins de 2 % d'écart avec les tables).
+static func nectar_mass(volume: float, concentration: float) -> float:
+	return volume * (1.0 + 0.43 * concentration)
+
+## Masse de sucre (mg) contenue dans [param volume] µL de nectar.
 static func sugar_in(volume: float, concentration: float) -> float:
-	return volume * concentration * (1.0 + 0.43 * concentration)
+	return nectar_mass(volume, concentration) * concentration
 
 # =============================================================================
 # Lecture seule (appelé par l'interface : BeeOverlay)
