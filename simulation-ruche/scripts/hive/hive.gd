@@ -42,6 +42,22 @@ const OPEN_CUTOFF_HZ := 20000.0
 ## Distance minimale (m) entre deux abeilles à l'apparition.
 @export var spawn_min_spacing: float = 0.01
 
+
+@export_group("Zones du cadre")
+
+## Demi-largeur (m) de la zone de déchargement, centrée sur l'aplomb de l'entrée.
+## Les receveuses attendent les butineuses près de l'entrée, en bas du rayon.
+## Valeur de réglage, à adapter au cadre.
+@export var unloading_half_width: float = 0.08
+
+## Hauteur (m) de la zone de déchargement, depuis le bas de la zone de déambulation.
+@export var unloading_height: float = 0.06
+
+## Hauteur (m) de la zone de stockage, depuis le haut de la zone de déambulation.
+## Le nectar est stocké dans les cellules du haut du rayon, au-dessus du couvain.
+@export var storage_height: float = 0.08
+
+
 @export_group("Plancher et tunnel")
 
 ## Demi-écart (m) entre les deux vitres, au niveau du plancher.
@@ -60,6 +76,7 @@ const OPEN_CUTOFF_HZ := 20000.0
 
 ## Marge (m) entre le centre d'une abeille et une paroi : environ sa demi-largeur.
 @export var wall_margin: float = 0.004
+
 
 @export_group("Planche d'envol")
 
@@ -173,24 +190,16 @@ var nectar_stock: float = 0.0
 ## Masse de sucre (mg) stockée : l'énergie réellement récoltée par la colonie
 var sugar_stock := 0.0
 
-## Abeilles en attente d'une receveuse, dans l'ordre d'arrivée.
-## Seule la première peut être prise en charge.
-var _unload_queue: Array[Bee] = []
+## Abeilles dans l'état RECEIVE. Tenu à jour par ReceiveState (enter / exit).
+var _receivers: Array[Bee] = []
 
-## Abeille → instant (horloge _clock) de son entrée dans la file.
-var _queue_entry: Dictionary = {}
+## Receveuses libres (en route vers la zone de déchargement ou en attente).
+## Une butineuse qui en croise une la retire de la liste (claim_receiver_near).
+var _free_receivers: Array[Bee] = []
 
-## Abeille → attente (s) mesurée au moment de sa prise en charge.
-## Gardée jusqu'à leave_unload_queue() pour être lue par get_wait_time().
-var _measured_wait: Dictionary = {}
+## Butineuses en train de chercher une receveuse (interface uniquement).
+var _searching: Array[Bee] = []
 
-## Instant (horloge _clock) où chaque receveuse redevient libre, une case par receveuse.
-## Agrandi à la demande par _find_free_receiver().
-var _receiver_free_at: Array[float] = []
-
-## Horloge de la ruche (s), avancée dans _physics_process() : elle s'arrête
-## avec la pause, contrairement à l'heure système.
-var _clock := 0.0
 
 # =============================================================================
 # Son
@@ -221,10 +230,6 @@ func _process(delta: float) -> void:
 	# Parois d'abord : _update_buzz_volume() utilise _outside
 	_update_walls(delta)
 	_update_buzz_volume(delta)
-
-func _physics_process(delta: float) -> void:
-	# Horloge de la file de déchargement, au rythme de la physique
-	_clock += delta
 
 # =============================================================================
 # Points de passage
@@ -597,60 +602,94 @@ func get_dancers_near(pos: Vector3, radius: float) -> Array[Bee]:
 # Déchargement (boucle négative : saturation)
 # =============================================================================
 
-## Ajoute [param amount] µL de nectar contenant [param sugar] mg de sucre
-## au stock de la ruche (appelé par UNLOAD).
-## TODO : passer par une receveuse libre (try_unload) pour la boucle de saturation.
+# =============================================================================
+# Déchargement et receveuses (boucle négative : saturation)
+# =============================================================================
+# La ruche ne gère ni file d'attente ni attribution : elle tient seulement le registre
+# des receveuses, comme celui des danses. Une butineuse ne trouve une receveuse qu'en
+# la croisant, et mesure elle-même son temps de recherche (UnloadState). Ce temps
+# s'allonge quand les receveuses libres se raréfient (Seeley et Tovey 1994).
+
+## Ajoute [param amount] µL de nectar contenant [param sugar] mg de sucre au stock
+## de la ruche. Appelé par la receveuse quand elle dépose sa charge en cellule.
 func deposit(amount: float, sugar: float = 0.0) -> void:
 	nectar_stock += amount
 	sugar_stock += sugar
 
-## Demande une receveuse pour [param bee]. Au premier appel, l'abeille entre dans la file.
-## Renvoie true quand une receveuse la prend en charge ; sinon elle reste en file
-## et doit rappeler la fonction plus tard. Seule la première de la file peut être servie.
-func try_unload(bee: Bee) -> bool:
-	if not _queue_entry.has(bee):
-		_queue_entry[bee] = _clock
-		_unload_queue.append(bee)
-	# Seule la première de la file peut prendre une receveuse libre
-	if _unload_queue[0] != bee:
-		return false
-	var slot := _find_free_receiver(bee.simulation.receiver_count)
-	if slot == -1:
-		return false
-	# Receveuse occupée pendant toute la durée du transfert
-	_receiver_free_at[slot] = _clock + bee.simulation.unload_duration
-	_unload_queue.pop_front()
-	_measured_wait[bee] = _clock - _queue_entry[bee]
-	return true
+## Point tiré au hasard dans la zone de déchargement : bas du cadre, à l'aplomb de l'entrée.
+func get_unloading_point() -> Vector3:
+	var to_local := _spawn.global_transform.affine_inverse()
+	var local := to_local * clamp_to_comb(get_entrance_position())
+	local.x += randf_range(-unloading_half_width, unloading_half_width)
+	# Bas du cadre = côté -Z de SpawnMarker (voir get_comb_bottom_point)
+	local.z = _comb_center_local.z - spawn_extent.y + randf() * unloading_height
+	return clamp_to_comb(_spawn.global_transform * local)
 
-## Temps d'attente (s) de [param bee] : mesuré à la prise en charge, en cours
-## si elle est encore en file, 0 si elle n'y est jamais entrée.
-func get_wait_time(bee: Bee) -> float:
-	if _measured_wait.has(bee):
-		return _measured_wait[bee]
-	if _queue_entry.has(bee):
-		return _clock - _queue_entry[bee]
-	return 0.0
+## Point tiré au hasard dans la zone de stockage : bande du haut du cadre.
+func get_storage_point() -> Vector3:
+	var local := Vector3(
+		_comb_center_local.x + randf_range(-spawn_extent.x, spawn_extent.x),
+		0.0,   # à la surface du cadre
+		_comb_center_local.z + spawn_extent.y - randf() * storage_height)
+	return clamp_to_comb(_spawn.global_transform * local)
 
-## Retire [param bee] de la file et efface ses mesures.
-func leave_unload_queue(bee: Bee) -> void:
-	_unload_queue.erase(bee)
-	_queue_entry.erase(bee)
-	_measured_wait.erase(bee)
+## Inscrit [param bee] parmi les receveuses (entrée dans RECEIVE).
+func register_receiver(bee: Bee) -> void:
+	if not _receivers.has(bee):
+		_receivers.append(bee)
 
-## Longueur de la file, pour observer la saturation.
-func get_queue_length() -> int:
-	return _unload_queue.size()
+## Retire [param bee] des receveuses (sortie de RECEIVE, ou abeille supprimée).
+func unregister_receiver(bee: Bee) -> void:
+	_receivers.erase(bee)
+	_free_receivers.erase(bee)
 
-## Indice d'une receveuse libre parmi les [param count] premières, ou -1 si toutes
-## sont occupées. Crée les cases manquantes si receiver_count a augmenté.
-func _find_free_receiver(count: int) -> int:
-	while _receiver_free_at.size() < count:
-		_receiver_free_at.append(0.0)
-	for i in count:
-		if _receiver_free_at[i] <= _clock:
-			return i
-	return -1
+## Marque [param bee] comme libre ou occupée. Sans effet si elle n'est pas receveuse.
+func set_receiver_free(bee: Bee, free: bool) -> void:
+	if not free:
+		_free_receivers.erase(bee)
+	elif _receivers.has(bee) and not _free_receivers.has(bee):
+		_free_receivers.append(bee)
+
+## Receveuse libre la plus proche de [param forager], à moins de [param radius],
+## ou null. La receveuse renvoyée n'est plus libre : deux butineuses ne peuvent
+## pas la prendre en même temps. Perception locale : seule une receveuse au contact
+## compte, la butineuse ne sait rien des autres.
+## Peu de receveuses libres à la fois : un simple parcours suffit, sans grille.
+func claim_receiver_near(forager: Bee, radius: float) -> Bee:
+	var best: Bee = null
+	var best_d2 := radius * radius
+	# Boucle non typée : une abeille supprimée peut rester dans la liste
+	for r in _free_receivers:
+		if not is_instance_valid(r) or r == forager:
+			continue
+		var d2: float = r.global_position.distance_squared_to(forager.global_position)
+		if d2 <= best_d2:
+			best = r
+			best_d2 = d2
+	if best != null:
+		_free_receivers.erase(best)
+	return best
+
+## Une butineuse commence à chercher une receveuse.
+func start_search(bee: Bee) -> void:
+	if not _searching.has(bee):
+		_searching.append(bee)
+
+## La butineuse a trouvé une receveuse, ou a quitté UNLOAD.
+func stop_search(bee: Bee) -> void:
+	_searching.erase(bee)
+
+## Nombre de receveuses (interface).
+func get_receiver_count() -> int:
+	return _receivers.size()
+
+## Nombre de receveuses libres (interface).
+func get_free_receiver_count() -> int:
+	return _free_receivers.size()
+
+## Nombre de butineuses qui cherchent une receveuse (interface).
+func get_searching_count() -> int:
+	return _searching.size()
 
 # =============================================================================
 # Son
@@ -701,20 +740,6 @@ func _setup_lowpass() -> AudioEffectLowPassFilter:
 ## Les abeilles l'empruntent pour les sauts entre le cadre et le plancher (Bee._update_buzz).
 func get_buzz_bus() -> StringName:
 	return _buzz.bus
-	
-# =============================================================================
-# Lecture (appelé par l'interface)
-# =============================================================================
-
-## Nombre de receveuses occupées parmi les [param count] premières.
-## Une receveuse jamais sollicitée n'a pas encore de case dans _receiver_free_at :
-## elle est libre, d'où le mini().
-func get_busy_receiver_count(count: int) -> int:
-	var busy := 0
-	for i in mini(count, _receiver_free_at.size()):
-		if _receiver_free_at[i] > _clock:
-			busy += 1
-	return busy
 
 ## Nombre total de suiveuses, toutes danses confondues.
 func get_follower_total() -> int:
@@ -722,6 +747,10 @@ func get_follower_total() -> int:
 	for dancer in _followers:
 		total += _followers[dancer]
 	return total
+	
+# =============================================================================
+# Lecture (appelé par l'interface)
+# =============================================================================
 
 ## Danses en cours par espèce annoncée (Flower.Species → nombre de danseuses).
 ## Dictionnaire non typé : les clés sont les valeurs entières de l'enum.

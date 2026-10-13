@@ -147,6 +147,9 @@ var dance: DanceState
 ## Décharge le nectar dans la ruche
 var unload: UnloadState
 
+## Receveuse : reçoit le nectar des butineuses et le stocke (division du travail).
+var receive: ReceiveState
+
 # --- Dehors ---
 
 ## Exploration à la recherche d'une fleur, avec timeout.
@@ -331,6 +334,7 @@ func _ready() -> void:
 	forage = ForageState.new(self)
 	dance = DanceState.new(self)
 	watch = WatchState.new(self)
+	receive = ReceiveState.new(self)
 
 	_model_base_basis = _model.transform.basis
 	_camera_anchor_base_basis = _camera_anchor.transform.basis
@@ -412,6 +416,9 @@ func _physics_process(delta: float) -> void:
 func _exit_tree() -> void:
 	if current_state is HiveState:
 		hive.bee_left(self)
+	# exit() n'est pas appelée à la suppression : on retire l'abeille des registres
+	hive.unregister_receiver(self)
+	hive.stop_search(self)
 
 # =============================================================================
 # Transitions

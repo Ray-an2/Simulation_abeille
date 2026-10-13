@@ -1,7 +1,8 @@
 class_name IdleState extends HiveState
 ## Attente dans la ruche (abeille jaune). État initial.
 ## L'abeille alterne phases de marche sinueuse et pauses sur le cadre,
-## jusqu'à détecter une danse (→ WATCH) ou partir explorer (→ SCOUT).
+## jusqu'à détecter une danse (→ WATCH), partir explorer (→ SCOUT)
+## ou devenir receveuse (→ RECEIVE)
 ## Le déplacement lui-même (accélération, évitement, bords) est délégué à bee.walker.
 
 # =============================================================================
@@ -58,6 +59,12 @@ func update(delta: float) -> BeeState:
 	var dancer := _find_dancer(delta)
 	if dancer != null:
 		return bee.watch.follow(dancer)
+
+	# Engagement spontané comme receveuse, réservé aux abeilles qui ne butinent pas :
+	# ni source connue, ni vecteur de danse. Probabilité par seconde, comme p_scout.
+	if not is_instance_valid(bee.known_flower) and not bee.has_dance_vector() \
+			and randf() < bee.simulation.p_receive * delta:
+		return bee.receive
 	
 	# Pas de sortie si la lumière est insuffisante pour cette abeille
 	if bee.can_leave():
@@ -67,10 +74,10 @@ func update(delta: float) -> BeeState:
 				and randf() < bee.simulation.p_reactivate * delta:
 			return bee.leave_hive.then(bee.go)
 
-	# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
-	# L'abeille sort d'abord à pied, puis explore une fois dehors.
-	if randf() < bee.simulation.p_scout * delta:
-		return bee.leave_hive.then(bee.scout)
+		# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
+		# L'abeille sort d'abord à pied, puis explore une fois dehors.
+		if randf() < bee.simulation.p_scout * delta:
+			return bee.leave_hive.then(bee.scout)
 
 	_update_phase(delta)
 

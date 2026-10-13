@@ -41,6 +41,7 @@ const STATE_LABELS := {
 	&"UnloadState": "Déchargement",
 	&"WatchState": "Suit une danse",
 	&"DanceState": "Danse",
+	&"ReceiveState": "Receveuse",
 }
 
 # =============================================================================
@@ -204,13 +205,27 @@ func _state_rows(bee: Bee, state: StringName, in_state: float) -> Array[Dictiona
 			var d := bee.global_position.distance_to(bee.hive.get_landing_position())
 			rows.append(_row_pair("Distance à la ruche", "%.1f m" % d))
 		&"UnloadState":
-			# Boucle de saturation : l'attente réduit l'envie de danser
-			var wait := bee.hive.get_wait_time(bee)
-			var ratio := clampf(wait / maxf(sim.max_wait_time, 0.001), 0.0, 1.0)
-			rows.append(_row_pair("File d'attente", "%d abeille(s)" % bee.hive.get_queue_length()))
-			rows.append(_row_gauge("Attente d'une receveuse", "%.1f s" % wait, ratio, BAD_COLOR))
+			# Boucle de saturation : une recherche longue réduit l'envie de danser
+			var search: float = bee.unload.get_search_time()
+			var ratio := clampf(search / maxf(sim.max_wait_time, 0.001), 0.0, 1.0)
+			if bee.unload.is_transferring():
+				rows.append(_row_text("Transfert à une receveuse"))
+			else:
+				rows.append(_row_text("Cherche une receveuse libre"))
+			rows.append(_row_gauge("Recherche d'une receveuse", "%.1f s" % search, ratio, BAD_COLOR))
 			rows.append(_row_text("Envie de danser réduite de %d %%"
 					% roundi(sim.wait_penalty * ratio * 100.0)))
+		&"ReceiveState":
+			var receiver_state := bee.receive
+			rows.append(_row_text(receiver_state.get_phase_label()))
+			# Désœuvrement : au bout de receiver_idle_timeout, retour en attente
+			if receiver_state.is_free():
+				var idle := receiver_state.get_idle_time()
+				var timeout := maxf(sim.receiver_idle_timeout, 0.001)
+				rows.append(_row_gauge("Sans butineuse",
+						"retour en attente dans %.0f s" % maxf(timeout - idle, 0.0),
+						idle / timeout, DIM_COLOR))
+			rows.append(_row_pair("Chargements stockés", str(receiver_state.get_loads_stored())))
 		&"WatchState":
 			var dancer := bee.watch.get_dancer()
 			if dancer != null:
@@ -590,7 +605,7 @@ func _state_label(state: StringName) -> String:
 	return STATE_LABELS.get(state, String(state).trim_suffix("State"))
 
 
-## Couleur de l'état, la même que celle des marqueurs.
+## Couleur de l'état (badge, journal). Les marqueurs ont leurs propres couleurs.
 func _state_color(state: StringName) -> Color:
 	return BeeOverlay.STATE_COLORS.get(state, BeeOverlay.UNKNOWN_STATE_COLOR)
 
