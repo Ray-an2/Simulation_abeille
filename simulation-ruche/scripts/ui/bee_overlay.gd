@@ -1,7 +1,8 @@
 class_name BeeOverlay extends Control
 ## Surcouche 2D au-dessus du rendu 3D : un marqueur à l'écran pour chaque abeille,
 ## et une infobulle avec ses données pour l'abeille survolée ou épinglée.
-## Les fleurs ont aussi une infobulle (survol ou clic), la ruche seulement au clic.
+## Les fleurs (survol ou clic) et la ruche (clic seulement) ont une fiche plus
+## grande et découpée en sections (InfoCard).
 ## En vue abeille, le tableau de bord (BeeHud) prend le relais pour l'abeille suivie.
 ##
 ## M : afficher / masquer les marqueurs.
@@ -34,6 +35,20 @@ const UNKNOWN_STATE_COLOR := Color.MAGENTA
 
 ## Fond du cadre de l'infobulle.
 const BOX_COLOR := Color(0.0, 0.0, 0.0, 0.75)
+
+## Couleur de la ruche (orange, comme dans le sujet) : bande de sa fiche et jauges.
+const CARD_HIVE_COLOR := Color(1.0, 0.62, 0.15)
+
+## Jauge des receveuses quand elles sont toutes prises, et file non vide :
+## la ruche sature.
+const CARD_SATURATED_COLOR := Color(0.95, 0.35, 0.3)
+
+## Couleur de l'état d'une fleur dans sa fiche.
+const CARD_FLOWER_STATE_COLORS := {
+	Flower.State.AVAILABLE: Color(0.45, 0.85, 0.45),
+	Flower.State.BUSY: Color(1.0, 0.75, 0.3),
+	Flower.State.EMPTY: Color(0.9, 0.4, 0.35),
+}
 
 # =============================================================================
 # Paramètres réglables
@@ -83,11 +98,25 @@ const BOX_COLOR := Color(0.0, 0.0, 0.0, 0.75)
 ## d'observation 1 cadre fait donc autour de 50 cm de large. À ajuster au modèle.
 @export var hive_size := 0.5
 
-## Taille de police (px) du texte de l'infobulle.
+## Taille de police (px) du texte de l'infobulle des abeilles.
 @export var font_size := 14
 
 ## Marge intérieure (px) des cadres de texte.
 @export var padding := 6.0
+
+@export_group("Fiches ruche et fleurs")
+
+## Taille (px) du texte des fiches. À augmenter pour un vidéoprojecteur.
+@export var card_font_size := 18
+
+## Taille (px) du titre des fiches.
+@export var card_title_font_size := 26
+
+## Largeur (px) des fiches.
+@export var card_width := 380.0
+
+## Distance (px) minimale entre une fiche et le bord de l'écran.
+@export var card_margin := 16.0
 
 @export_group("Touches")
 
@@ -141,6 +170,12 @@ var _flower_radii: Dictionary[Flower, float] = {}
 var _hive_position := Vector2.ZERO
 var _hive_radius := 0.0
 var _hive_visible := false
+
+## Couleur de pollen de chaque espèce (valeur entière de Flower.Species),
+## relevée une fois sur les fleurs de la scène. Sert aux barres de danse
+## de la fiche ruche, qui ne connaît que des espèces.
+var _species_colors: Dictionary[int, Color] = {}
+var _species_colors_ready := false
 
 # =============================================================================
 # Cycle de vie
@@ -330,8 +365,8 @@ func _draw() -> void:
 	if not _info_enabled:
 		return
 
-	# --- Infobulle ---
-	# Fleurs et ruche repérées ici seulement : sans marqueur, elles ne servent qu'aux infobulles
+	# --- Infobulle et fiches ---
+	# Fleurs et ruche repérées ici seulement : sans marqueur, elles ne servent qu'à l'affichage
 	_locate_flowers(cam, cam_right)
 	_locate_hive(cam, cam_right)
 
@@ -347,7 +382,7 @@ func _draw() -> void:
 	elif _pinned_hive:
 		show_hive = true
 	else:
-		# Pas de survol pour la ruche : de près elle remplit l'écran, et son infobulle
+		# Pas de survol pour la ruche : de près elle remplit l'écran, et sa fiche
 		# masquerait en permanence les abeilles qu'on regarde sur le cadre
 		var mouse := get_local_mouse_position()
 		bee = _bee_at(mouse)
@@ -368,16 +403,16 @@ func _draw() -> void:
 		# L'anneau entoure la zone cliquable : le pistil de loin, la corolle de près
 		var ring := maxf(pick_radius, _flower_radii[flower]) + 4.0
 		draw_arc(at, ring, 0.0, TAU, 32, Color.WHITE, 1.5)
-		_draw_tooltip(_flower_info(flower), at, ring)
+		_draw_card(_flower_card(flower), at, ring)
 	elif show_hive and _hive_visible:
 		var ring := maxf(pick_radius, _hive_radius) + 4.0
-		# De près, l'anneau déborderait de l'écran : on n'affiche que le cadre de texte,
-		# posé sur le centre de la ruche (puis ramené dans l'écran par _draw_tooltip)
+		var card := _hive_card(_get_hive())
+		# De près, l'anneau déborderait de l'écran : fiche ancrée au bord droit
 		if ring < 0.5 * minf(size.x, size.y):
 			draw_arc(_hive_position, ring, 0.0, TAU, 48, Color.WHITE, 1.5)
+			_draw_card(card, _hive_position, ring)
 		else:
-			ring = 0.0
-		_draw_tooltip(_hive_info(_get_hive()), _hive_position, ring)
+			_draw_card_docked(card)
 
 
 ## Calcule la position et le rayon apparent à l'écran de chaque fleur visible.
@@ -413,6 +448,7 @@ func _locate_hive(cam: Camera3D, cam_right: Vector3) -> void:
 	_hive_radius = _hive_position.distance_to(edge)
 	_hive_visible = true
 
+# --- Infobulle texte (abeilles) ---
 
 ## Dessine l'infobulle [param text] à droite de l'anneau de rayon [param ring],
 ## sans sortir de l'écran.
@@ -439,6 +475,40 @@ func _draw_box(text: String, pos: Vector2, fsize: int) -> void:
 	# draw_multiline_string place la ligne de base de la première ligne en pos : on ajoute l'ascendante
 	var baseline := pos + Vector2(padding, padding + font.get_ascent(fsize))
 	draw_multiline_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
+
+# --- Fiches (ruche, fleurs) ---
+
+## Fiche vide aux réglages de l'inspecteur, bordée de [param accent].
+func _new_card(accent: Color) -> InfoCard:
+	var card := InfoCard.new(accent)
+	card.font_size = card_font_size
+	card.title_font_size = card_title_font_size
+	card.width = card_width
+	return card
+
+
+## Dessine [param card] à droite de l'anneau de rayon [param ring] centré en [param at],
+## à gauche s'il n'y a pas la place, puis la ramène dans l'écran.
+func _draw_card(card: InfoCard, at: Vector2, ring: float) -> void:
+	var font := get_theme_default_font()
+	var card_size := card.get_card_size(font)
+	var pos := at + Vector2(ring + 12.0, -card_size.y * 0.5)
+	if pos.x + card_size.x > size.x - card_margin:
+		pos.x = at.x - ring - 12.0 - card_size.x
+	# maxf : fenêtre plus petite que la fiche, on garde au moins le coin haut gauche visible
+	pos.x = clampf(pos.x, card_margin, maxf(card_margin, size.x - card_size.x - card_margin))
+	pos.y = clampf(pos.y, card_margin, maxf(card_margin, size.y - card_size.y - card_margin))
+	card.draw(self, pos, font)
+
+
+## Dessine [param card] contre le bord droit, centrée verticalement.
+## Pour la ruche vue de près, qui occupe tout l'écran.
+func _draw_card_docked(card: InfoCard) -> void:
+	var font := get_theme_default_font()
+	var card_size := card.get_card_size(font)
+	var pos := Vector2(size.x - card_size.x - card_margin, (size.y - card_size.y) * 0.5)
+	pos.y = maxf(pos.y, card_margin)
+	card.draw(self, pos, font)
 
 # =============================================================================
 # Données affichées
@@ -482,57 +552,89 @@ func _bee_info(bee: Bee) -> String:
 	return "\n".join(lines)
 
 
-## Texte affiché pour une fleur : état de son automate, stock, et pression des abeilles.
-func _flower_info(flower: Flower) -> String:
+## Fiche d'une fleur : état de son automate, stock et qualité du nectar,
+## puis pression des abeilles.
+func _flower_card(flower: Flower) -> InfoCard:
 	var sim := flower.simulation
-	var lines := PackedStringArray()
-	lines.append("%s (%s)" % [flower.name, flower.get_species_label()])
-	lines.append("État : %s" % flower.get_state_label())
-	lines.append("Stock : %.0f / %.0f µL (seuil %.0f)" % [flower.resource, sim.max_resource, sim.threshold])
-	lines.append("Nectar : %d %% de sucre (prélèvement × %.2f)" % [
-		roundi(flower.sugar_concentration * 100.0), flower.get_viscosity_factor()])
+	var color := _pollen_color(flower)
+	var card := _new_card(color)
+	card.title(str(flower.name), flower.get_species_label(), color)
+	card.pair("État", flower.get_state_label(),
+			CARD_FLOWER_STATE_COLORS.get(flower.state, InfoCard.TEXT_COLOR))
+
+	# --- Nectar (boucle d'épuisement) ---
+	card.section("Nectar")
+	var max_res := maxf(sim.max_resource, 0.001)
+	# Deux repères sur la jauge : fermeture (seuil) et réouverture
+	card.gauge("Stock", "%.0f / %.0f µL" % [flower.resource, sim.max_resource],
+			flower.resource / max_res, color,
+			[sim.threshold / max_res, sim.reopen_level / max_res])
+	card.note("Fermeture à %.0f µL · réouverture à %.0f µL" % [sim.threshold, sim.reopen_level])
+	card.pair("Teneur en sucre", "%d %%" % roundi(flower.sugar_concentration * 100.0))
+	card.pair("Durée de prélèvement", "× %.2f" % flower.get_viscosity_factor())
 	if flower.state == Flower.State.EMPTY:
 		var remaining := flower.get_reopen_remaining()
-		if is_inf(remaining):
-			lines.append("Réouverture : sécrétion arrêtée")
-		else:
-			lines.append("Réouverture à %.0f : dans %s environ" % [
-				sim.reopen_level, _format_hours(remaining)])
+		card.pair("Réouverture", "sécrétion arrêtée" if is_inf(remaining)
+				else "dans %s env." % _format_hours(remaining))
+
+	# --- Abeilles ---
+	card.section("Abeilles")
 	# Réservée dès qu'une abeille décide d'y aller : une fleur « Disponible »
 	# peut donc déjà être visée par une abeille en vol
 	var claimant := flower.get_claimant()
 	if claimant != null:
-		lines.append("Réservée par : %s" % claimant.name)
-	lines.append("Abeilles qui la connaissent : %d" % _bees_knowing(flower))
-	return "\n".join(lines)
+		card.pair("Réservée par", str(claimant.name))
+	else:
+		card.pair("Réservée par", "personne", InfoCard.DIM_COLOR)
+	card.pair("La connaissent", "%d" % _bees_knowing(flower))
+	return card
 
 
-## Texte affiché pour la ruche : une ligne par grandeur des deux boucles qu'elle porte,
-## le recrutement (danses, suiveuses) et la saturation (file, receveuses).
-func _hive_info(h: Hive) -> String:
+## Fiche de la ruche : réserves, puis les deux boucles qu'elle porte,
+## la saturation (receveuses, file) et le recrutement (danses par espèce).
+func _hive_card(h: Hive) -> InfoCard:
+	var card := _new_card(CARD_HIVE_COLOR)
 	if h == null:
-		return "Ruche introuvable"
-	var lines := PackedStringArray()
-	lines.append("Ruche")
-	lines.append("Nectar stocké : %s" % Units.volume(h.nectar_stock))
-	lines.append("Sucre stocké : %s" % Units.mass(h.sugar_stock))
+		card.title("Ruche introuvable")
+		return card
+	var total := bees_container.get_child_count()
+	card.title("Ruche", "%d abeilles" % total, CARD_HIVE_COLOR)
+
+	# --- Réserves ---
+	card.section("Réserves")
+	card.pair("Nectar stocké", Units.volume(h.nectar_stock))
+	card.pair("Sucre stocké", Units.mass(h.sugar_stock))
 	# bees_inside compte les abeilles dans un état du super-état Ruche
-	lines.append("Abeilles dans la ruche : %d / %d" % [h.bees_inside, bees_container.get_child_count()])
+	card.gauge("Abeilles dans la ruche", "%d / %d" % [h.bees_inside, total],
+			h.bees_inside / float(maxi(total, 1)), CARD_HIVE_COLOR)
 
 	# --- Saturation (boucle négative) ---
-	lines.append("File de déchargement : %d" % h.get_queue_length())
+	card.section("Saturation · boucle négative")
 	var bee := _first_bee()
 	if bee != null:
 		var count := bee.simulation.receiver_count
-		lines.append("Receveuses occupées : %d / %d" % [h.get_busy_receiver_count(count), count])
+		var busy := h.get_busy_receiver_count(count)
+		# Rouge quand toutes les receveuses sont prises : les arrivantes font la queue
+		card.gauge("Receveuses occupées", "%d / %d" % [busy, count], busy / float(maxi(count, 1)),
+				CARD_SATURATED_COLOR if busy >= count else CARD_HIVE_COLOR)
+	var queue := h.get_queue_length()
+	card.pair("File de déchargement", "%d" % queue,
+			CARD_SATURATED_COLOR if queue > 0 else InfoCard.TEXT_COLOR)
 
 	# --- Recrutement (boucle positive) ---
-	lines.append("Danses en cours : %d (suiveuses : %d)" % [h.get_dance_count(), h.get_follower_total()])
-	# Une ligne par espèce annoncée : montre quelle source l'emporte dans le recrutement
+	card.section("Recrutement · boucle positive")
+	card.pair("Danses en cours", "%d" % h.get_dance_count())
+	card.pair("Suiveuses", "%d" % h.get_follower_total())
+	# Une barre par espèce annoncée, en part des danses : montre quelle source
+	# l'emporte dans la concurrence du recrutement
 	var dances := h.get_dances_by_species()
+	if dances.is_empty():
+		card.note("Aucune danse")
+	var dance_total := float(maxi(h.get_dance_count(), 1))
 	for species in dances:
-		lines.append("    %s : %d" % [Flower.SPECIES_LABELS.get(species, "?"), dances[species]])
-	return "\n".join(lines)
+		card.bar(Flower.SPECIES_LABELS.get(species, "?"), "%d" % dances[species],
+				dances[species] / dance_total, _species_color(species))
+	return card
 
 
 ## Nombre d'abeilles dont la source connue est [param flower] (exploration ou danse).
@@ -544,6 +646,25 @@ func _bees_knowing(flower: Flower) -> int:
 		if bee != null and bee.known_flower == flower:
 			count += 1
 	return count
+
+
+## Couleur des pelotes de pollen de [param flower], blanc à défaut.
+func _pollen_color(flower: Flower) -> Color:
+	if flower.pollen_material != null:
+		return flower.pollen_material.albedo_color
+	return Color.WHITE
+
+
+## Couleur de pollen de [param species], relevée sur la première fleur de chaque
+## espèce. Parcours fait une seule fois : les matériaux ne changent pas en jeu.
+func _species_color(species: int) -> Color:
+	if not _species_colors_ready:
+		for node in get_tree().get_nodes_in_group(&"flowers"):
+			var f := node as Flower
+			if f != null and f.pollen_material != null and not _species_colors.has(f.species):
+				_species_colors[f.species] = f.pollen_material.albedo_color
+		_species_colors_ready = true
+	return _species_colors.get(species, InfoCard.DIM_COLOR)
 
 
 ## Durée en heures simulées → « 1 h 20 min ».
