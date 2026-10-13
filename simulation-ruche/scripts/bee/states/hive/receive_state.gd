@@ -12,6 +12,22 @@ class_name ReceiveState extends HiveState
 ## une receveuse désœuvrée retourne en IDLE. Le nombre de receveuses suit donc l'afflux
 ## de nectar, alors que chacune ne perçoit que ses propres contacts.
 ##
+## Ventilation : une receveuse non sollicitée peut monter ventiler au-dessus des
+## réserves (Phase.TO_FAN puis Phase.FAN). Les receveuses appartiennent à la classe
+## d'âge « intermédiaire » (environ 11 à 20 jours, Seeley 1982), qui assure aussi la
+## ventilation : il s'agit d'un changement de tâche entre deux sollicitations, pas
+## d'un rôle exclusif. Sur le rayon, la ventilation renouvelle l'air et évapore l'eau
+## du nectar en cours de mûrissement. Pas de condition sur Hive.nectar_stock : ce
+## compteur part de zéro au lancement, alors qu'une vraie colonie a déjà des réserves
+## (miel et nectar non mûr des jours précédents).
+## Partie ventiler, la receveuse n'est plus disponible pour les butineuses : elle se
+## retire du registre des receveuses libres jusqu'à son retour dans la zone de
+## déchargement. Ventiler a donc un coût pour la boucle de saturation.
+##
+## Non modélisé : la ventilation à l'entrée de la ruche (thermorégulation), la plus
+## visible en réalité (Peters et al. 2019). Elle demanderait un trajet jusqu'au tunnel
+## et une température de la ruche pour la déclencher.
+##
 ## Simplification : la receveuse ne cherche pas les butineuses, ce sont elles qui la
 ## trouvent en la croisant (UnloadState). En réalité, les deux vont à la rencontre
 ## l'une de l'autre dans la zone de déchargement.
@@ -43,6 +59,20 @@ const TRANSFER_TIMEOUT_FACTOR := 2.0
 ## Doit dépasser UnloadState.APPROACH_TIMEOUT.
 const MAX_APPROACH_TIME := 3.0
 
+## Probabilité par seconde qu'une receveuse en attente parte ventiler.
+## 0,01 : 100 s d'attente en moyenne, du même ordre que receiver_idle_timeout.
+## Une valeur plus forte viderait la zone de déchargement (la receveuse s'absente
+## le temps du trajet aller-retour et de la ventilation) et renforcerait fortement
+## la boucle de saturation. Valeur de réglage, non mesurée.
+const FAN_START_RATE := 0.01
+
+## Durée (s) d'une séquence de ventilation, tirée entre ces deux bornes.
+## Une ventileuse reste sur place de plusieurs dizaines de secondes à plusieurs
+## minutes ; bornes raccourcies pour que l'alternance reste visible.
+## Valeurs de réglage, non mesurées.
+const FAN_DURATION_MIN := 15.0
+const FAN_DURATION_MAX := 60.0
+
 # =============================================================================
 # Types
 # =============================================================================
@@ -51,6 +81,8 @@ const MAX_APPROACH_TIME := 3.0
 enum Phase {
 	TO_AREA,   ## Marche vers la zone de déchargement (libre : peut être sollicitée)
 	WAIT,      ## Attente dans la zone de déchargement (libre)
+	TO_FAN,    ## Monte vers les réserves pour ventiler (indisponible)
+	FAN,       ## Ventile au-dessus des réserves (indisponible)
 	TRANSFER,  ## Se tourne vers la butineuse et reçoit son nectar (occupée)
 	TO_STORE,  ## Monte vers les cellules de stockage (occupée)
 	STORE,     ## Dépose le nectar dans une cellule (occupée)
@@ -60,6 +92,8 @@ enum Phase {
 const PHASE_LABELS := {
 	Phase.TO_AREA: "Rejoint la zone de déchargement",
 	Phase.WAIT: "Attend une butineuse",
+	Phase.TO_FAN: "Monte ventiler au-dessus des réserves",
+	Phase.FAN: "Ventile au-dessus des réserves",
 	Phase.TRANSFER: "Reçoit du nectar",
 	Phase.TO_STORE: "Monte stocker le nectar",
 	Phase.STORE: "Dépose le nectar en cellule",
@@ -72,7 +106,8 @@ const PHASE_LABELS := {
 ## Étape en cours.
 var _phase := Phase.TO_AREA
 
-## Point visé : dans la zone de déchargement ou dans la zone de stockage.
+## Point visé : dans la zone de déchargement ou dans la zone de stockage
+## (dépôt du nectar ou ventilation).
 var _target := Vector3.ZERO
 
 ## Temps (s) passé libre depuis le dernier transfert (ou depuis l'entrée dans l'état).
@@ -86,6 +121,9 @@ var _transfer_time := 0.0
 
 ## Temps restant (s) du dépôt en cellule.
 var _store_left := 0.0
+
+## Temps restant (s) de la séquence de ventilation en cours.
+var _fan_left := 0.0
 
 ## Nectar (µL) et sucre (mg) reçus, portés jusqu'à la cellule.
 ## Gardés ici et non dans bee.nectar : bee.nectar pilote les pelotes de pollen
@@ -107,6 +145,7 @@ func enter() -> void:
 	_load_sugar = 0.0
 	_loads_stored = 0
 	_idle_time = 0.0
+	_fan_left = 0.0
 	bee.hive.register_receiver(bee)
 	_go_to_area()
 
@@ -133,7 +172,24 @@ func update(delta: float) -> BeeState:
 			# à traiter, elle retourne à l'attente générale
 			if _idle_time >= bee.simulation.receiver_idle_timeout:
 				return bee.idle
-			_wander_in_area(delta)
+			# Tirage par seconde, multiplié par delta : indépendant de la fréquence d'images
+			if randf() < FAN_START_RATE * delta:
+				_start_fanning()
+			else:
+				_wander_in_area(delta)
+
+		Phase.TO_FAN:
+			_idle_time += delta
+			if _walk_to(_target, STEER_RATE, ARRIVAL_RADIUS, delta):
+				_phase = Phase.FAN
+
+		Phase.FAN:
+			_idle_time += delta
+			# Même règle qu'en WAIT : ventiler ne compte pas comme une sollicitation.
+			# Désœuvrée trop longtemps, elle rejoint l'attente générale depuis le haut du cadre
+			if _idle_time >= bee.simulation.receiver_idle_timeout:
+				return bee.idle
+			_update_fanning(delta)
 
 		Phase.TRANSFER:
 			# Sur place : c'est la butineuse qui vient se placer en face, décompte
@@ -213,12 +269,18 @@ func cancel_transfer(forager: Bee) -> void:
 # =============================================================================
 
 ## true si la receveuse peut être sollicitée par une butineuse.
+## Une receveuse partie ventiler ne l'est pas (voir _start_fanning).
 func is_free() -> bool:
 	return _phase == Phase.TO_AREA or _phase == Phase.WAIT
 
 ## Temps (s) passé libre depuis le dernier transfert.
 func get_idle_time() -> float:
 	return _idle_time
+
+## Nectar (µL) porté vers les cellules : non nul entre take_load() et le dépôt.
+## Distinct de bee.nectar, réservé aux butineuses (voir _load_nectar).
+func get_load_nectar() -> float:
+	return _load_nectar
 
 ## Chargements stockés depuis l'entrée dans l'état.
 func get_loads_stored() -> int:
@@ -246,3 +308,36 @@ func _wander_in_area(delta: float) -> void:
 	bee.walker.step(WAIT_SPEED * _wander_speed(delta), delta)
 	if bee.is_near(_target, ARRIVAL_RADIUS):
 		_target = bee.hive.get_unloading_point()
+
+## Départ vers la zone de stockage pour une séquence de ventilation.
+## La receveuse quitte le registre des receveuses libres : loin de la zone de
+## déchargement, aucune butineuse ne la croiserait de toute façon, et le compteur
+## de receveuses libres de l'interface resterait faux.
+## L'animation n'est lancée qu'une fois l'abeille arrêtée (voir _update_fanning).
+func _start_fanning() -> void:
+	_phase = Phase.TO_FAN
+	_target = bee.hive.get_storage_point()
+	_fan_left = randf_range(FAN_DURATION_MIN, FAN_DURATION_MAX)
+	bee.hive.set_receiver_free(bee, false)
+
+## Ventilation sur place : l'abeille finit de freiner, puis bat des ailes
+## sans bouger jusqu'à la fin de la séquence.
+func _update_fanning(delta: float) -> void:
+	# Freinage : step() continue d'avancer en ralentissant, puis passe en _bee_idle
+	# à l'arrêt complet. On ne l'appelle plus ensuite, sinon il imposerait
+	# _bee_idle à chaque frame et écraserait _bee_fan.
+	if not bee.walker.is_stopped():
+		bee.walker.step(0.0, delta)
+		return
+
+	# play_animation() ne relance pas une animation déjà en cours :
+	# l'appel à chaque frame est sans effet une fois _bee_fan démarrée
+	bee.play_animation(&"_bee_fan")
+
+	_fan_left -= delta
+	if _fan_left <= 0.0:
+		# Redescend vers la zone de déchargement, de nouveau disponible.
+		# Nouveaux tirages de virage et de vitesse, départ de l'arrêt
+		_reset_wander()
+		bee.walker.reset()
+		_go_to_area()

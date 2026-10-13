@@ -218,6 +218,9 @@ func _state_rows(bee: Bee, state: StringName, in_state: float) -> Array[Dictiona
 		&"ReceiveState":
 			var receiver_state := bee.receive
 			rows.append(_row_text(receiver_state.get_phase_label()))
+			# Charge reçue de la butineuse, portée jusqu'aux cellules
+			if receiver_state.get_load_nectar() > 0.0:
+				rows.append(_row_pair("Nectar à stocker", "%.1f µL" % receiver_state.get_load_nectar()))
 			# Désœuvrement : au bout de receiver_idle_timeout, retour en attente
 			if receiver_state.is_free():
 				var idle := receiver_state.get_idle_time()
@@ -277,8 +280,13 @@ func _cargo_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 	var flower_color := _flower_color(flower)
 
 	var capacity := maxf(sim.forage_capacity, 0.001)
-	rows.append(_row_gauge("Nectar transporté", "%.1f / %.1f" % [bee.nectar, sim.forage_capacity],
-			bee.nectar / capacity, flower_color))
+	# Une receveuse porte sa charge dans ReceiveState (_load_nectar), pas dans
+	# bee.nectar, réservé aux butineuses (pelotes de pollen, compteur du tracker)
+	var carried := bee.nectar
+	if bee.current_state == bee.receive:
+		carried = bee.receive.get_load_nectar()
+	rows.append(_row_gauge("Nectar transporté", "%.1f / %.1f" % [carried, sim.forage_capacity],
+			carried / capacity, flower_color))
 	if flower == null:
 		rows.append(_row_text("Aucune source connue"))
 		return rows
