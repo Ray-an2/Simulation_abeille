@@ -48,10 +48,10 @@ const OPEN_CUTOFF_HZ := 20000.0
 ## Demi-largeur (m) de la zone de déchargement, centrée sur l'aplomb de l'entrée.
 ## Les receveuses attendent les butineuses près de l'entrée, en bas du rayon.
 ## Valeur de réglage, à adapter au cadre.
-@export var unloading_half_width: float = 0.08
+@export var unloading_half_width: float = 0.15
 
 ## Hauteur (m) de la zone de déchargement, depuis le bas de la zone de déambulation.
-@export var unloading_height: float = 0.06
+@export var unloading_height: float = 0.1
 
 ## Hauteur (m) de la zone de stockage, depuis le haut de la zone de déambulation.
 ## Le nectar est stocké dans les cellules du haut du rayon, au-dessus du couvain.
