@@ -188,8 +188,20 @@ var recruited_by: Bee = null
 var trip_time: float = 0.0
 
 ## Temps (s) passé à butiner pendant ce trajet (prélèvements et vols entre fleurs).
-## Compté par FORAGE, lu par UNLOAD pour le score de temps de la source.
+## Compté par FORAGE, lu par UNLOAD pour le coût énergétique du trajet.
 var forage_time: float = 0.0
+
+## Masse de sucre (mg) transportée dans le jabot. Cumulée en FORAGE à chaque
+## prélèvement (l'abeille goûte le nectar), vidée en UNLOAD.
+var sugar: float = 0.0
+
+## true si la nuit a écourté le butinage de ce trajet : UNLOAD ne réévalue
+## pas la source sur un jabot incomplet. Remis à false en UNLOAD.
+var trip_cut_short: bool = false
+
+## Efficacité énergétique (gain - coût) / coût du dernier trajet vers known_flower,
+## calculée en UNLOAD. Affichée par l'interface, utile au réglage.
+var known_efficiency: float = 0.0
 
 ## Distance à plat ruche -> source
 var distance: float = 0.0
@@ -608,12 +620,14 @@ func is_too_dark() -> bool:
 func learn_source(flower: Flower, dancer: Bee = null) -> void:
 	known_flower = flower
 	known_profitability = 0.0
+	known_efficiency = 0.0
 	recruited_by = dancer
 
 ## Oublie la source connue (vide, ou jugée trop peu rentable).
 func forget_source() -> void:
 	known_flower = null
 	known_profitability = 0.0
+	known_efficiency = 0.0
 	recruited_by = null
 
 # =============================================================================

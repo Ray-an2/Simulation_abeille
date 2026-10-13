@@ -4,8 +4,8 @@ class_name Flower extends Node3D
 ##   - BUSY : une abeille la butine (request_foraging() a réussi) ;
 ##   - EMPTY : stock sous le seuil, fermée jusqu'à ce que la sécrétion
 ##     l'ait fait remonter à reopen_level.
-## Le stock baisse de harvest_amount à chaque butinage (boucle d'épuisement)
-## et remonte en continu par sécrétion, dans tous les états.
+## Le stock baisse à chaque butinage (boucle d'épuisement) et remonte en continu
+## par sécrétion, dans tous les états.
 ##
 ## Modèle de sécrétion (Búrquez & Corbet, 1991) : le débit apparent est la
 ## sécrétion brute moins une réabsorption proportionnelle au stock présent,
@@ -14,6 +14,19 @@ class_name Flower extends Node3D
 ##   - une fleur vidée sécrète vite, une fleur presque pleine presque plus ;
 ##   - une fleur jamais butinée reste pleine, sans « déborder ».
 ## La sécrétion ralentit la nuit (night_secretion_factor dans Simulation).
+##
+## Qualité du nectar : chaque espèce a sa concentration en sucre. Elle agit à
+## deux endroits :
+##   - la quantité de sucre rapportée, donc le gain de l'abeille ;
+##   - la durée du prélèvement : un nectar concentré est visqueux et se lape
+##     plus lentement (Kim, Gilet & Bush, PNAS 2011). Le débit de sucre est
+##     maximal vers 52 % (optimal_concentration dans Simulation).
+## La fleur n'évalue rien elle-même : c'est l'abeille qui goûte le nectar
+## et juge la source au retour (UnloadState).
+##
+## Quantité prélevée : proportionnelle au stock (une fleur à moitié vide ne
+## donne que la moitié de harvest_amount). L'épuisement est ainsi perçu par
+## l'abeille à travers ce qu'elle récolte, sans lire le stock de la fleur.
 ##
 ## Une abeille réserve la fleur dès qu'elle décide d'y aller (try_claim()),
 ## et non au moment où elle s'y pose : les autres la voient occupée et en
@@ -27,7 +40,7 @@ class_name Flower extends Node3D
 ## Émis à chaque changement d'état (AVAILABLE, BUSY, EMPTY).
 signal state_changed(new_state: State)
 
-## Émis à la fin d'un butinage, une fois le nectar prélevé.
+## Émis à la fin d'un butinage, une fois le nectar prélevé (quantité dans last_yield).
 ## Écouté par ForageState pour remplir le jabot de l'abeille.
 signal foraging_finished(flower: Flower)
 
@@ -51,11 +64,24 @@ enum Species { LILY, ROSE_BLUE, ROSE_RED, ROSE_GREEN, ROSE_PINK }
 ## la durée de la journée simulée. Valeurs de réglage, reprises des anciens
 ## temps de recharge : l'ordre des espèces est conservé.
 const SECRETION_TAU := {
-	Species.LILY: 4.0,			# moy
+	Species.LILY: 4.0,			# moy
 	Species.ROSE_BLUE: 4.0,		# moy
 	Species.ROSE_RED: 2.0,		# rapide
 	Species.ROSE_GREEN: 8.0,	# long
 	Species.ROSE_PINK: 1.0,		# très rapide
+}
+
+## Concentration en sucre du nectar (fraction massique) par espèce.
+## Dans la nature, elle va d'environ 10 % à plus de 60 % selon les espèces ;
+## en dessous de 15 à 20 %, les abeilles domestiques ne récoltent presque plus.
+## Valeurs fictives, choisies pour créer des compromis avec la sécrétion
+## et la distance (les roses réelles offrent surtout du pollen).
+const SUGAR_CONCENTRATION := {
+	Species.LILY: 0.40,			# référence
+	Species.ROSE_BLUE: 0.55,	# riche, mais loin
+	Species.ROSE_RED: 0.20,		# pauvre, mais près
+	Species.ROSE_GREEN: 0.50,	# riche, mais sécrétion lente
+	Species.ROSE_PINK: 0.25,	# sécrétion rapide, nectar dilué
 }
 
 ## Écart (unités) au stock maximal en dessous duquel la fleur est considérée
@@ -104,16 +130,24 @@ var species: Species
 ## Constante de temps de sécrétion (heures simulées) de cette fleur, tirée de SECRETION_TAU.
 var secretion_tau: float
 
+## Concentration en sucre du nectar (fraction massique), tirée de SUGAR_CONCENTRATION.
+## Lue par ForageState : l'abeille goûte le nectar qu'elle prélève.
+var sugar_concentration: float
+
 ## Référence vers la simulation, injectée par setup(). Donne les paramètres
 ## de stock (max_resource, threshold, reopen_level, harvest_amount,
-## night_secretion_factor) et l'horloge simulée.
+## night_secretion_factor), la viscosité et l'horloge simulée.
 var simulation: Simulation
 
 ## État courant de l'automate. Lu par le HUD.
 var state: State = State.AVAILABLE
 
-## Stock de nectar restant. Lu par le HUD et par get_profitability().
+## Stock de nectar restant. Lu par le HUD.
 var resource: float
+
+## Quantité de nectar prélevée au dernier butinage. Fixée juste avant
+## foraging_finished, lue par ForageState dans son gestionnaire du signal.
+var last_yield: float = 0.0
 
 ## true pendant un butinage. Doublon de State.BUSY, conservé par sécurité
 ## contre deux request_foraging() dans la même image.
@@ -141,6 +175,7 @@ func _ready() -> void:
 	add_to_group(&"flowers")
 	species = _detect_species()
 	secretion_tau = SECRETION_TAU[species]
+	sugar_concentration = SUGAR_CONCENTRATION[species]
 	set_process(false)
 
 ## Appelée par Simulation au lancement : injecte la simulation et remplit le stock.
@@ -199,13 +234,15 @@ func release(bee: Bee) -> void:
 # =============================================================================
 
 ## Démarre un butinage si la fleur est disponible : elle passe en BUSY pour une
-## durée tirée entre foraging_time_min et foraging_time_max, puis émet
-## foraging_finished. Renvoie false si elle est occupée ou vide.
+## durée tirée entre foraging_time_min et foraging_time_max, allongée ou raccourcie
+## par la viscosité du nectar, puis émet foraging_finished.
+## Renvoie false si elle est occupée ou vide.
 func request_foraging() -> bool:
 	if state != State.AVAILABLE or locked:
 		return false
 	locked = true
-	_timer = randf_range(simulation.foraging_time_min, simulation.foraging_time_max)
+	_timer = randf_range(simulation.foraging_time_min, simulation.foraging_time_max) \
+			* get_viscosity_factor()
 	_change_state(State.BUSY)
 	set_process(true)
 	return true
@@ -228,12 +265,21 @@ func get_landing_position() -> Vector3:
 func get_landing_normal() -> Vector3:
 	return _pistil_marker.global_basis.y.normalized()
 
-## Rentabilité entre 0 et 1 selon le stock restant : 0 au seuil, 1 stock plein.
-func get_profitability() -> float:
-	if state == State.EMPTY:
-		return 0.0
-	var range_size := maxf(simulation.max_resource - simulation.threshold, 0.001)
-	return clampf((resource - simulation.threshold) / range_size, 0.0, 1.0)
+## Facteur appliqué à la durée du prélèvement selon la viscosité du nectar.
+## Modèle simplifié : le débit de lapage (volume/s) décroît en exp(-c / c_opt).
+## Pour prélever le même volume, la durée croît donc en exp(c / c_opt), et le
+## débit de sucre c·exp(-c / c_opt) est maximal à c = c_opt.
+## Vaut 1 à reference_concentration : la plage foraging_time_min..max y est inchangée.
+func get_viscosity_factor() -> float:
+	var c_opt := maxf(simulation.optimal_concentration, 0.01)
+	return exp((sugar_concentration - simulation.reference_concentration) / c_opt)
+
+## Masse de sucre (mg) contenue dans [param volume] µL de nectar à la concentration
+## massique [param concentration]. La masse volumique d'une solution de saccharose
+## croît avec la concentration : environ 1 + 0,43·c g/mL (1,09 à 20 %, 1,17 à 40 %,
+## 1,26 à 60 %, moins de 2 % d'écart avec les tables).
+static func sugar_in(volume: float, concentration: float) -> float:
+	return volume * concentration * (1.0 + 0.43 * concentration)
 
 # =============================================================================
 # Lecture seule (appelé par l'interface : BeeOverlay)
@@ -289,9 +335,14 @@ func _secrete(hours: float) -> void:
 
 ## Fin du butinage : prélève le nectar, prévient l'abeille, puis repasse en
 ## AVAILABLE si le stock reste au-dessus du seuil, sinon en EMPTY.
+## La quantité prélevée est proportionnelle au stock : harvest_amount pour une
+## fleur pleine, moins pour une fleur entamée. L'abeille qui récolte peu sur
+## chaque fleur doit en visiter davantage, ou rentre avec un jabot incomplet.
 ## Le _process reste actif : la fleur n'est plus pleine, la sécrétion continue.
 func _finish_foraging() -> void:
-	resource = maxf(resource - simulation.harvest_amount, 0.0)
+	var fill := clampf(resource / maxf(simulation.max_resource, 0.001), 0.0, 1.0)
+	last_yield = minf(simulation.harvest_amount * fill, resource)
+	resource -= last_yield
 	locked = false
 	foraging_finished.emit(self)
 

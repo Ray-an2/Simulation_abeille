@@ -313,6 +313,7 @@ func _dance_rows(bee: Bee) -> Array[Dictionary]:
 	var high := sim.profitability_high
 	var color := GOOD_COLOR if p >= high else (MID_COLOR if p >= low else BAD_COLOR)
 	rows.append(_row_gauge("Rentabilité", "%.2f" % p, p, color, [low, high]))
+	rows.append(_row_pair("Efficacité énergétique", "%.1f" % bee.known_efficiency))
 	var verdict := "Dansera, si l'attente à la ruche reste courte" if p >= high \
 			else ("Repartira sans danser" if p >= low else "Abandonnera la source")
 	rows.append(_row_text(verdict, color))

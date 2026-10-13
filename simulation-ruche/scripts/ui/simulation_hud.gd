@@ -107,7 +107,7 @@ func _build_text() -> String:
 		carried += bee.nectar
 
 	lines.append("")
-	lines.append("ABEILLES (%d) | connaissent une source : %d | nectar porté : %.1f" % [
+	lines.append("ABEILLES (%d) | connaissent une source : %d | nectar porté : %.1f µL" % [
 		sim.bees_container.get_child_count(), with_source, carried])
 	var names: Array = STATE_ORDER.duplicate()
 	for key in counts:
@@ -122,12 +122,14 @@ func _build_text() -> String:
 	# --- Ruche (les valeurs absentes de hive.gd s'affichent « ? ») ---
 	var hive := sim.hive
 	var stock: Variant = hive.get("nectar_stock")
+	var sugar: Variant = hive.get("sugar_stock")
 	var queue := "?"
 	if hive.has_method("get_queue_length"):
 		queue = str(hive.get_queue_length())
 	lines.append("")
-	lines.append("RUCHE | nectar stocké : %s | file d'attente : %s" % [
-		"%.1f" % stock if stock != null else "?", queue])
+	lines.append("RUCHE | nectar stocké : %s µL | sucre : %s mg | file d'attente : %s" % [
+		"%.1f" % stock if stock != null else "?",
+		"%.0f" % sugar if sugar != null else "?", queue])
 
 	# --- Fleurs : états par espèce ---
 	var stats := {}   # Species -> [disponibles, occupées, vides, total]

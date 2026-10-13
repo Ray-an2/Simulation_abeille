@@ -464,13 +464,15 @@ func _bee_info(bee: Bee) -> String:
 	var lines := PackedStringArray()
 	lines.append(str(bee.name))
 	lines.append("État : %s" % _state_name(bee).trim_suffix("State"))
-	lines.append("Nectar : %.1f / %.1f" % [bee.nectar, bee.simulation.forage_capacity])
+	lines.append("Nectar : %.1f / %.1f µL" % [bee.nectar, bee.simulation.forage_capacity])
+	lines.append("Sucre porté : %.1f mg" % bee.sugar)
 
 	var flower := bee.known_flower
 	if is_instance_valid(flower):
 		lines.append("Source : %s (%s)" % [flower.name, flower.get_species_label()])
 		lines.append("Stock source : %.0f" % flower.resource)
 		lines.append("Rentabilité : %.2f" % bee.known_profitability)
+		lines.append("Efficacité énergétique : %.1f" % bee.known_efficiency)
 	else:
 		lines.append("Source : aucune")
 
@@ -486,11 +488,16 @@ func _flower_info(flower: Flower) -> String:
 	var lines := PackedStringArray()
 	lines.append("%s (%s)" % [flower.name, flower.get_species_label()])
 	lines.append("État : %s" % flower.get_state_label())
-	lines.append("Stock : %.0f / %.0f (seuil %.0f)" % [flower.resource, sim.max_resource, sim.threshold])
-	lines.append("Rentabilité : %.2f" % flower.get_profitability())
+	lines.append("Stock : %.0f / %.0f µL (seuil %.0f)" % [flower.resource, sim.max_resource, sim.threshold])
+	lines.append("Nectar : %d %% de sucre (prélèvement × %.2f)" % [
+		roundi(flower.sugar_concentration * 100.0), flower.get_viscosity_factor()])
 	if flower.state == Flower.State.EMPTY:
-		lines.append("Recharge : reste %s sur %s" % [
-			_format_hours(flower.get_recharge_remaining()), _format_hours(flower.recharge_time)])
+		var remaining := flower.get_reopen_remaining()
+		if is_inf(remaining):
+			lines.append("Réouverture : sécrétion arrêtée")
+		else:
+			lines.append("Réouverture à %.0f : dans %s environ" % [
+				sim.reopen_level, _format_hours(remaining)])
 	# Réservée dès qu'une abeille décide d'y aller : une fleur « Disponible »
 	# peut donc déjà être visée par une abeille en vol
 	var claimant := flower.get_claimant()
@@ -507,7 +514,8 @@ func _hive_info(h: Hive) -> String:
 		return "Ruche introuvable"
 	var lines := PackedStringArray()
 	lines.append("Ruche")
-	lines.append("Nectar stocké : %.1f" % h.nectar_stock)
+	lines.append("Nectar stocké : %.1f µL" % h.nectar_stock)
+	lines.append("Sucre stocké : %.0f mg" % h.sugar_stock)
 	# bees_inside compte les abeilles dans un état du super-état Ruche
 	lines.append("Abeilles dans la ruche : %d / %d" % [h.bees_inside, bees_container.get_child_count()])
 

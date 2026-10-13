@@ -243,13 +243,13 @@ class_name Simulation extends Node3D
 
 @export_group("Fleur")
 
-## Quantité maximale de nectar dans une fleur.
+## Quantité maximale de nectar (µL) dans une fleur.
 @export var max_resource := 100.0
 
 ## Seuil de la fleur.
 @export var threshold := 20.0
 
-## Quantité de nectar récoltée par une abeille à chaque prélèvement.
+## Quantité de nectar (µL) prélevée sur une fleur pleine ; proportionnelle au stock sinon.
 @export var harvest_amount := 5.0
 
 ## Stock auquel une fleur fermée (EMPTY) rouvre. Supérieur au seuil : la fleur
@@ -263,23 +263,43 @@ class_name Simulation extends Node3D
 @export_range(0.0, 1.0) var night_secretion_factor := 0.2
 
 
-@export_group("Qualité de source")
+@export_group("Rentabilité")
 
-## Distance à plat (unités) à partir de laquelle la source est jugée trop loin (score 0).
+## Distance à plat (m) de la source la plus lointaine envisagée.
+## Ne sert plus qu'à l'affichage : échelle de la boussole de danse (BeeHud).
 @export var max_source_distance := 25.0
 
-## Durée de butinage (s) à partir de laquelle le score de temps tombe à 0.
-## Un jabot plein demande environ 50 à 60 s (6 fleurs) : score de temps ≈ 0,5.
-@export var max_forage_time := 120.0
+## Concentration (fraction massique) qui maximise le débit de sucre d'un insecte
+## qui lape le nectar : environ 52 % (Kim, Gilet & Bush, PNAS 2011). Au-delà,
+## le nectar est plus riche mais trop visqueux pour être bu vite.
+@export_range(0.1, 0.9) var optimal_concentration := 0.52
 
-## Poids du stock de la fleur dans la rentabilité.
-@export_range(0.0, 1.0) var weight_stock := 0.4
+## Concentration pour laquelle la durée d'un prélèvement vaut foraging_time_min..max.
+## Plus concentré : prélèvement plus long ; plus dilué : plus court.
+@export_range(0.1, 0.9) var reference_concentration := 0.40
 
-## Poids de la distance dans la rentabilité.
-@export_range(0.0, 1.0) var weight_distance := 0.3
+## Énergie (J) d'un milligramme de sucre (saccharose : environ 16,5 kJ/g).
+@export var sugar_energy := 16.5
 
-## Poids de la durée de trajet dans la rentabilité.
-@export_range(0.0, 1.0) var weight_time := 0.3
+## Facteur d'échelle entre les distances de la scène et celles du terrain réel.
+## Une butineuse va couramment à plusieurs centaines de mètres : à l'échelle de
+## la scène, le coût du vol serait négligeable et la distance ne compterait plus.
+## 50 : une source à 25 m « coûte » comme une source à 1,25 km.
+@export var distance_scale := 50.0
+
+## Coût énergétique du vol (J/m). Ordre de grandeur : environ 45 mW pour une
+## ouvrière de 0,1 g (soit environ 10 mg de sucre par heure de vol) à 6-7 m/s.
+@export var flight_cost_per_m := 0.0065
+
+## Puissance (W) dépensée dans le massif : prélèvements, petits vols entre fleurs.
+## Estimation, un peu moins de la moitié du vol de croisière. Valeur de réglage.
+@export var forage_power := 0.02
+
+## Efficacité énergétique (gain - coût) / coût en dessous de laquelle la rentabilité vaut 0.
+@export var efficiency_min := 5.0
+
+## Efficacité énergétique à partir de laquelle la rentabilité vaut 1.
+@export var efficiency_max := 50.0
 
 
 # ============================================================

@@ -10,6 +10,11 @@ class_name ForageState extends FieldState
 ## (équivalent réel : la marque odorante laissée sur la fleur).
 ## Seule la fleur en cours est réservée : elle est libérée au départ vers la suivante.
 ##
+## À chaque prélèvement, l'abeille ajoute à son jabot la quantité que la fleur
+## a réellement donnée (moins sur une fleur entamée) et goûte le nectar :
+## elle cumule la masse de sucre transportée (bee.sugar). UNLOAD s'en sert
+## pour juger la source, sans jamais lire le stock des fleurs.
+##
 ## known_flower n'est pas modifiée : elle reste la fleur d'arrivée dans le massif,
 ## celle que l'abeille dansera et vers laquelle GO la renverra.
 
@@ -53,6 +58,10 @@ var _foraging: bool = false
 ## comptabilisé à l'image suivante, dans update().
 var _harvest_done: bool = false
 
+## Quantité donnée par la fleur au dernier prélèvement, relevée à la réception
+## de foraging_finished (Flower.last_yield).
+var _yield := 0.0
+
 # =============================================================================
 # Méthodes de l'état
 # =============================================================================
@@ -87,10 +96,16 @@ func exit() -> void:
 func interrupt() -> BeeState:
 	if _foraging or _harvest_done:
 		return null
-	return super()
+	var next := super()
+	if next != null:
+		# Trajet écourté par la nuit : le jabot incomplet ne dit rien de la source,
+		# UNLOAD ne la réévaluera pas
+		bee.trip_cut_short = true
+	return next
 
 func update(delta: float) -> BeeState:
-	# Chrono de butinage : sert au score de temps de la source (UNLOAD)
+	# Chrono de butinage : temps passé dans le massif, compté dans le coût
+	# énergétique du trajet (UNLOAD)
 	bee.forage_time += delta
 	if _phase == Phase.HOP:
 		return _update_hop(delta)
@@ -106,7 +121,10 @@ func update(delta: float) -> BeeState:
 		# Couleur de la fleur visitée, puis croissance de la pelote
 		bee.set_pollen_from(_flower)
 		var capacity := bee.simulation.forage_capacity
-		bee.nectar += minf(bee.simulation.harvest_amount, capacity - bee.nectar)
+		var drunk := minf(_yield, capacity - bee.nectar)
+		bee.nectar += drunk
+		# L'abeille goûte le nectar : elle cumule le sucre qu'elle transporte
+		bee.sugar += Flower.sugar_in(drunk, _flower.sugar_concentration)
 		bee.update_pollen()
 		# Jabot plein : retour à la ruche
 		if bee.nectar >= capacity:
@@ -204,7 +222,9 @@ func _pick_next_flower() -> bool:
 # Signaux
 # =============================================================================
 
-## Fin d'un prélèvement, émise par la fleur. Le nectar est ajouté dans update().
-func _on_foraging_finished(_source: Flower) -> void:
+## Fin d'un prélèvement, émise par la fleur. La quantité est relevée tout de suite
+## (last_yield), le nectar est ajouté au jabot dans update().
+func _on_foraging_finished(source: Flower) -> void:
+	_yield = source.last_yield
 	_foraging = false
 	_harvest_done = true

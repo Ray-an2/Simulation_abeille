@@ -3,6 +3,15 @@ class_name UnloadState extends HiveState
 ## Déroulé : marche jusqu'à un point du rayon -> file d'attente de la ruche ->
 ## transfert à une receveuse -> dépôt du nectar -> évaluation de la source.
 ## Sorties :  1 (rentable) -> DANCE    0 (moyenne) -> GO    -1 (mauvaise ou vide) -> IDLE
+##
+## Rentabilité : efficacité énergétique du trajet, (gain - coût) / coût, mesure
+## utilisée par Seeley pour relier la qualité d'une source à l'intensité de la danse.
+##   - gain : énergie du sucre rapporté (volume × concentration, goûté en FORAGE) ;
+##   - coût : vol aller-retour (distance perçue par le flux optique) et temps
+##     passé dans le massif.
+## L'abeille n'utilise que ce qu'elle a mesuré elle-même : jamais le stock d'une fleur.
+## L'épuisement d'une source lui parvient par un jabot moins rempli et un butinage
+## plus long ; la distance, la concentration et la viscosité par le gain et le coût.
 
 ## Distance (m) d'arrivée au point de déchargement. Doit dépasser le rayon de virage
 ## du walker (walk_speed × 1,3 / STEER_RATE ≈ 0,9 cm), sinon l'abeille tourne autour.
@@ -60,15 +69,19 @@ func update(delta: float) -> BeeState:
 			if _transfer_left > 0.0:
 				return null
 
+	# Sucre rapporté : relevé avant le vidage du jabot, il sert à l'évaluation
+	var sugar := bee.sugar
+
 	# Décharger le nectar dans la ruche
 	if bee.nectar > 0.0:
-		bee.hive.deposit(bee.nectar)
+		bee.hive.deposit(bee.nectar, sugar)
 		bee.nectar = 0.0
 		# Nectar déchargé : les pelotes disparaissent
 		bee.update_pollen()
+	bee.sugar = 0.0
 
 	# Évaluer la source et choisir l'état suivant
-	var verdict := _evaluate_source()
+	var verdict := _evaluate_source(sugar)
 	if verdict == 1:
 		# Saturation de la ruche : plus l'attente a été longue, moins l'abeille
 		# a envie de danser (durée de danse réduite, voire pas de danse du tout)
@@ -90,42 +103,40 @@ func update(delta: float) -> BeeState:
 	return bee.idle
 
 
-## Calcule la rentabilité de la source (0 à 1) et renvoie 1, 0 ou -1.
-func _evaluate_source() -> int:
-	# Le trajet est terminé : chrono remis à zéro (il reste affiché par le HUD)
-	bee.trip_time = 0.0
-	
+## Calcule la rentabilité de la source (0 à 1) à partir de [param sugar], masse
+## de sucre (mg) rapportée, et renvoie 1, 0 ou -1.
+func _evaluate_source(sugar: float) -> int:
 	var sim := bee.simulation
 	var flower := bee.known_flower
 
-	# Le trajet est terminé : on remet à zéro le chrono
+	# Mesures du trajet, relevées avant leur remise à zéro.
+	# forage_time n'est remis à zéro qu'à l'entrée de FORAGE : on le fait aussi ici,
+	# sinon un trajet sans butinage hériterait de la valeur du trajet précédent.
+	var forage_time := bee.forage_time
+	var cut_short := bee.trip_cut_short
 	bee.trip_time = 0.0
+	bee.forage_time = 0.0
+	bee.trip_cut_short = false
 
-	# Aucune source connue, ou source épuisée
-	if not is_instance_valid(flower) or flower.is_empty():
+	# Aucune source connue
+	if not is_instance_valid(flower):
 		bee.known_profitability = 0.0
+		bee.known_efficiency = 0.0
 		return -1
 
-	# Distance à plat et angle de danse (utilisés par DANCE)
+	# Distance à plat et angle de danse (utilisés par DANCE et par le coût du vol)
 	bee.distance = sim.get_flat_distance(bee.hive.global_position, flower.global_position)
 	bee.angle = sim.get_dance_angle(flower.global_position, bee.hive.global_position)
 
-	# Trois scores entre 0 (mauvais) et 1 (excellent)
-	var stock_score := flower.get_profitability()
-	var distance_score := 1.0 - clampf(bee.distance / sim.max_source_distance, 0.0, 1.0)
-	
-	# Temps passé sur place à remplir le jabot : ne dépend que de la source
-	# (débit des fleurs, concurrence dans le massif). La distance a son propre score,
-	# et le temps d'exploration ne doit pas pénaliser une source qu'on vient de trouver.
-	var time_score := 1.0 - clampf(bee.forage_time / sim.max_forage_time, 0.0, 1.0)
+	# Pas de butinage pendant ce trajet (nuit tombée en GO, source réservée puis
+	# exploration bredouille), ou butinage écourté par la nuit : l'abeille n'a rien
+	# appris de nouveau sur la source. Elle garde son jugement et y retournera.
+	if forage_time <= 0.0 or cut_short:
+		return 0
 
-	# Moyenne pondérée (poids réglables dans simulation.gd)
-	var total_weight := maxf(sim.weight_stock + sim.weight_distance + sim.weight_time, 0.001)
-	bee.known_profitability = (
-		sim.weight_stock * stock_score
-		+ sim.weight_distance * distance_score
-		+ sim.weight_time * time_score
-	) / total_weight
+	# Efficacité énergétique du trajet
+	bee.known_efficiency = _energetic_efficiency(sugar, bee.distance, forage_time)
+	bee.known_profitability = _efficiency_to_profitability(bee.known_efficiency)
 
 	# Seuils : au-dessus de high on danse, en dessous de low on abandonne
 	if bee.known_profitability >= sim.profitability_high:
@@ -133,3 +144,30 @@ func _evaluate_source() -> int:
 	if bee.known_profitability < sim.profitability_low:
 		return -1
 	return 0
+
+
+## Efficacité énergétique (gain - coût) / coût d'un trajet : [param sugar] mg
+## de sucre rapportés d'une source à [param distance] m (à l'échelle de la scène),
+## après [param forage_time] s passées dans le massif.
+## Négative si le trajet a coûté plus qu'il n'a rapporté (jabot vide).
+func _energetic_efficiency(sugar: float, distance: float, forage_time: float) -> float:
+	var sim := bee.simulation
+	var gain := sugar * sim.sugar_energy
+	# Vol aller-retour, distance ramenée à l'échelle réelle du terrain de butinage
+	var flight_cost := 2.0 * distance * sim.distance_scale * sim.flight_cost_per_m
+	var forage_cost := forage_time * sim.forage_power
+	var cost := maxf(flight_cost + forage_cost, 0.001)
+	return (gain - cost) / cost
+
+
+## Ramène une efficacité énergétique entre 0 et 1, sur une échelle logarithmique :
+## 0 à efficiency_min et en dessous, 1 à efficiency_max et au-dessus.
+## Le logarithme compare les sources par rapports et non par différences :
+## passer de 5 à 10 compte autant que passer de 25 à 50 (choix de modélisation).
+func _efficiency_to_profitability(efficiency: float) -> float:
+	var sim := bee.simulation
+	var e_min := maxf(sim.efficiency_min, 0.001)
+	var e_max := maxf(sim.efficiency_max, e_min * 1.001)
+	if efficiency <= e_min:
+		return 0.0
+	return clampf(log(efficiency / e_min) / log(e_max / e_min), 0.0, 1.0)

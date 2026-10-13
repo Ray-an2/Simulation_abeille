@@ -170,6 +170,9 @@ var _followers: Dictionary[Bee, int] = {}
 ## Nectar accumulé par la colonie depuis le début de la simulation.
 var nectar_stock: float = 0.0
 
+## Masse de sucre (mg) stockée : l'énergie réellement récoltée par la colonie
+var sugar_stock := 0.0
+
 ## Abeilles en attente d'une receveuse, dans l'ordre d'arrivée.
 ## Seule la première peut être prise en charge.
 var _unload_queue: Array[Bee] = []
@@ -594,10 +597,12 @@ func get_dancers_near(pos: Vector3, radius: float) -> Array[Bee]:
 # Déchargement (boucle négative : saturation)
 # =============================================================================
 
-## Ajoute [param amount] au stock de la ruche (appelé par UNLOAD).
+## Ajoute [param amount] µL de nectar contenant [param sugar] mg de sucre
+## au stock de la ruche (appelé par UNLOAD).
 ## TODO : passer par une receveuse libre (try_unload) pour la boucle de saturation.
-func deposit(amount: float) -> void:
+func deposit(amount: float, sugar: float = 0.0) -> void:
 	nectar_stock += amount
+	sugar_stock += sugar
 
 ## Demande une receveuse pour [param bee]. Au premier appel, l'abeille entre dans la file.
 ## Renvoie true quand une receveuse la prend en charge ; sinon elle reste en file
