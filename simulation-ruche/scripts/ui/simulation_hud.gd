@@ -127,9 +127,9 @@ func _build_text() -> String:
 	if hive.has_method("get_queue_length"):
 		queue = str(hive.get_queue_length())
 	lines.append("")
-	lines.append("RUCHE | nectar stocké : %s µL | sucre : %s mg | file d'attente : %s" % [
-		"%.1f" % stock if stock != null else "?",
-		"%.0f" % sugar if sugar != null else "?", queue])
+	lines.append("RUCHE | nectar stocké : %s | sucre : %s | file d'attente : %s" % [
+		Units.volume(stock) if stock != null else "?",
+		Units.mass(sugar) if sugar != null else "?", queue])
 
 	# --- Fleurs : états par espèce ---
 	var stats := {}   # Species -> [disponibles, occupées, vides, total]

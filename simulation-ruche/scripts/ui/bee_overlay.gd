@@ -514,8 +514,8 @@ func _hive_info(h: Hive) -> String:
 		return "Ruche introuvable"
 	var lines := PackedStringArray()
 	lines.append("Ruche")
-	lines.append("Nectar stocké : %.1f µL" % h.nectar_stock)
-	lines.append("Sucre stocké : %.0f mg" % h.sugar_stock)
+	lines.append("Nectar stocké : %s" % Units.volume(h.nectar_stock))
+	lines.append("Sucre stocké : %s" % Units.mass(h.sugar_stock))
 	# bees_inside compte les abeilles dans un état du super-état Ruche
 	lines.append("Abeilles dans la ruche : %d / %d" % [h.bees_inside, bees_container.get_child_count()])
 
