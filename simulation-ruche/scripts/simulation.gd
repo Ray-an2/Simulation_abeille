@@ -59,17 +59,38 @@ class_name Simulation extends Node3D
 
 @export_group("Ruche")
 
-## Nombre de receveuses : abeilles prises en charge en même temps.
-@export_range(1, 20) var receiver_count := 3
-
-## Durée (s) du transfert du nectar à une receveuse.
+## Durée (s) du transfert du nectar d'une butineuse à une receveuse.
 @export var unload_duration := 3.0
 
-## Attente (s) à partir de laquelle l'envie de danser est réduite au maximum.
+## Temps de recherche d'une receveuse (s) à partir duquel l'envie de danser est
+## réduite au maximum. 20 s : au-delà, les butineuses de Seeley (1992) ne faisaient
+## plus de danse frétillante.
 @export var max_wait_time := 20.0
 
 ## Réduction maximale de la rentabilité de danse due à l'attente (0 = aucune, 1 = totale).
 @export_range(0.0, 1.0) var wait_penalty := 0.8
+
+
+@export_group("Receveuses")
+
+## Probabilité par seconde qu'une abeille en IDLE sans source connue devienne receveuse.
+## Avec receiver_idle_timeout, elle fixe la part de receveuses quand aucun nectar
+## ne rentre : receveuses / abeilles en attente ≈ p_receive × receiver_idle_timeout
+## (loi de Little). 0,0025 × 100 = 0,25, soit environ 20 % des abeilles,
+## la proportion de receveuses mesurée par Seeley (1989).
+@export var p_receive: float = 0.0025
+
+## Temps (s) sans butineuse à servir au bout duquel une receveuse retourne en IDLE.
+## Valeur de réglage, non mesurée.
+@export var receiver_idle_timeout: float = 100.0
+
+## Distance (m) à laquelle une butineuse remarque une receveuse libre :
+## environ une longueur d'abeille, l'échange se faisant au contact des antennes.
+@export var unload_contact_radius: float = 0.015
+
+## Durée (s) du dépôt du nectar en cellule, une fois la receveuse arrivée
+## dans la zone de stockage. Valeur de réglage, non mesurée.
+@export var store_duration: float = 10.0
 
 
 @export_group("Exploration")

@@ -44,6 +44,14 @@ const TUNNEL_EXIT_RADIUS := 0.005
 ## Distance (m) de fin des déplacements en ligne droite (move_toward atteint la cible exactement).
 const EXACT_RADIUS := 0.0005
 
+## Vitesse de rotation sur place (rad/s) d'une abeille qui se tourne vers une autre
+## (trophallaxie entre butineuse et receveuse).
+const FACE_TURN_RATE := 4.0
+ 
+## Écart angulaire (rad) en dessous duquel deux abeilles sont considérées face à face
+## (environ 9°).
+const FACE_TOLERANCE := 0.15
+
 # =============================================================================
 # État interne de l'errance
 # =============================================================================
@@ -134,3 +142,19 @@ func go_out_if_day(next: BeeState) -> BeeState:
 	if bee.can_leave():
 		return bee.leave_hive.then(next)
 	return bee.idle
+	
+## Tourne l'abeille sur place vers [param target], autour de la normale du cadre,
+## d'au plus [param max_rate] rad/s. Renvoie l'écart angulaire (rad) qui reste
+## après cette image. L'avant de l'abeille est son axe +Z (voir Bee.get_head_offset).
+## Même principe que DanceState._rotate_body : seule l'orientation change.
+func _turn_to_face(target: Vector3, max_rate: float, delta: float) -> float:
+	var normal := bee.hive.get_comb_normal()
+	var to_target := (target - bee.global_position).slide(normal)
+	var forward := bee.global_basis.z.slide(normal)
+	if to_target.is_zero_approx() or forward.is_zero_approx():
+		return 0.0
+	# Angle signé autour de la normale : positif dans le sens de Basis(normal, +a)
+	var angle := forward.signed_angle_to(to_target, normal)
+	var step := clampf(angle, -max_rate * delta, max_rate * delta)
+	bee.global_basis = Basis(normal, step) * bee.global_basis
+	return absf(angle - step)

@@ -12,7 +12,7 @@ extends CanvasLayer
 @export var refresh_interval := 0.5
 
 ## Ordre d'affichage des états (les états inconnus sont ajoutés à la fin)
-const STATE_ORDER := ["IDLE", "LEAVE", "SCOUT", "WATCH", "GO", "FORAGE", "RETURN", "ENTER", "UNLOAD", "DANCE"]
+const STATE_ORDER := ["IDLE", "LEAVE", "SCOUT", "WATCH", "GO", "FORAGE", "RETURN", "ENTER", "UNLOAD", "DANCE", "RECEIVER"]
 
 var _label: Label
 var _timer := 0.0
@@ -123,13 +123,11 @@ func _build_text() -> String:
 	var hive := sim.hive
 	var stock: Variant = hive.get("nectar_stock")
 	var sugar: Variant = hive.get("sugar_stock")
-	var queue := "?"
-	if hive.has_method("get_queue_length"):
-		queue = str(hive.get_queue_length())
 	lines.append("")
-	lines.append("RUCHE | nectar stocké : %s | sucre : %s | file d'attente : %s" % [
+	lines.append("RUCHE | nectar stocké : %s | sucre : %s | receveuses : %d (%d libres) | en recherche : %d" % [
 		Units.volume(stock) if stock != null else "?",
-		Units.mass(sugar) if sugar != null else "?", queue])
+		Units.mass(sugar) if sugar != null else "?",
+		hive.get_receiver_count(), hive.get_free_receiver_count(), hive.get_searching_count()])
 
 	# --- Fleurs : états par espèce ---
 	var stats := {}   # Species -> [disponibles, occupées, vides, total]

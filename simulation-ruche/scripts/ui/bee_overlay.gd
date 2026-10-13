@@ -17,17 +17,31 @@ class_name BeeOverlay extends Control
 # Constantes
 # =============================================================================
 
-## Couleur par état, quand l'abeille ne transporte pas la couleur d'une source.
-## Les états pas encore codés (WATCH, DANCE) sont déjà prévus.
+## Couleur des marqueurs de toutes les abeilles dans la ruche (super-état Ruche).
+## Vus de l'extérieur, ces marqueurs s'empilent sur le cadre : une couleur par état
+## serait illisible, et de près l'abeille elle-même est visible.
+const HIVE_MARKER_COLOR := Color(1.0, 0.85, 0.1)   # jaune, comme demandé par le sujet
+
+## Dehors, sans source connue : exploratrice, ou recrue qui cherche le point dansé.
+const SEARCH_MARKER_COLOR := Color.WHITE
+
+## Dehors, rentre bredouille.
+const EMPTY_RETURN_MARKER_COLOR := Color(0.6, 0.6, 0.6)
+
+## Couleur par état, pour le tableau de bord (badge d'état, journal des transitions).
+## Les marqueurs ne s'en servent plus (voir _marker_color()).
 const STATE_COLORS := {
-	&"IdleState": Color(1.0, 0.85, 0.1),     # jaune, comme demandé par le sujet
+	&"IdleState": Color(1.0, 0.85, 0.1),
 	&"WatchState": Color(1.0, 0.85, 0.1),
 	&"DanceState": Color(1.0, 0.5, 0.0),
 	&"UnloadState": Color(1.0, 0.65, 0.2),
+	&"ReceiveState": Color(0.95, 0.8, 0.5),
 	&"LeaveState": Color(0.9, 0.9, 0.6),
 	&"EnterState": Color(0.9, 0.9, 0.6),
-	&"ScoutState": Color.WHITE,              # exploratrice : aucune source connue
-	&"ReturnState": Color(0.6, 0.6, 0.6),    # rentre bredouille (sinon couleur de la source)
+	&"ScoutState": Color.WHITE,
+	&"GoState": Color(0.75, 0.9, 1.0),
+	&"ForageState": Color(0.55, 0.85, 0.45),
+	&"ReturnState": Color(0.6, 0.6, 0.6),
 }
 
 ## Couleur des états absents de STATE_COLORS : repère visuel d'un état oublié.
@@ -514,14 +528,17 @@ func _draw_card_docked(card: InfoCard) -> void:
 # Données affichées
 # =============================================================================
 
-## Couleur de la source (pelote de pollen) pour une abeille dehors qui en connaît une,
-## couleur de l'état sinon.
+## Couleur du marqueur : une seule couleur dans la ruche ; dehors, la couleur
+## de la source connue (pelote de pollen), blanc en recherche, gris au retour bredouille.
 func _marker_color(bee: Bee) -> Color:
+	if bee.current_state is HiveState:
+		return HIVE_MARKER_COLOR
 	var flower := bee.known_flower
-	if bee.current_state is FieldState and is_instance_valid(flower) \
-			and flower.pollen_material != null:
+	if is_instance_valid(flower) and flower.pollen_material != null:
 		return flower.pollen_material.albedo_color
-	return STATE_COLORS.get(_state_name(bee), UNKNOWN_STATE_COLOR)
+	if bee.current_state is ReturnState:
+		return EMPTY_RETURN_MARKER_COLOR
+	return SEARCH_MARKER_COLOR
 
 
 ## Nom de classe de l'état courant (IdleState, ScoutState…), tiré du class_name du script.
@@ -610,16 +627,19 @@ func _hive_card(h: Hive) -> InfoCard:
 
 	# --- Saturation (boucle négative) ---
 	card.section("Saturation · boucle négative")
-	var bee := _first_bee()
-	if bee != null:
-		var count := bee.simulation.receiver_count
-		var busy := h.get_busy_receiver_count(count)
-		# Rouge quand toutes les receveuses sont prises : les arrivantes font la queue
-		card.gauge("Receveuses occupées", "%d / %d" % [busy, count], busy / float(maxi(count, 1)),
-				CARD_SATURATED_COLOR if busy >= count else CARD_HIVE_COLOR)
-	var queue := h.get_queue_length()
-	card.pair("File de déchargement", "%d" % queue,
-			CARD_SATURATED_COLOR if queue > 0 else InfoCard.TEXT_COLOR)
+	var receivers := h.get_receiver_count()
+	var free := h.get_free_receiver_count()
+	var searching := h.get_searching_count()
+	# Repère : environ 20 % de receveuses dans une colonie (Seeley 1989)
+	card.pair("Receveuses", "%d (%d %% des abeilles)"
+			% [receivers, roundi(100.0 * receivers / float(maxi(total, 1)))])
+	# Rouge quand aucune n'est libre alors que des butineuses cherchent : la ruche sature
+	var saturated := free == 0 and searching > 0
+	card.gauge("Receveuses libres", "%d / %d" % [free, receivers],
+			free / float(maxi(receivers, 1)),
+			CARD_SATURATED_COLOR if saturated else CARD_HIVE_COLOR)
+	card.pair("Butineuses en recherche", "%d" % searching,
+			CARD_SATURATED_COLOR if saturated else InfoCard.TEXT_COLOR)
 
 	# --- Recrutement (boucle positive) ---
 	card.section("Recrutement · boucle positive")

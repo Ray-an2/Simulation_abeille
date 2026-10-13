@@ -238,7 +238,8 @@ func update(delta: float) -> BeeState:
 			# de mm devant l'abeille, et _move_towards() ne l'oriente plus en dessous
 			# de 1 mm. Elle reculerait sans tourner. On impose donc la tangente.
 			var target := _next_loop_point(delta)
-			bee.hop_towards(target, _loop_speed, _loop_tangent(), _normal, delta)
+			# false : la danseuse marche, elle ne saute pas (pas de bourdonnement)
+			bee.hop_towards(target, _loop_speed, _loop_tangent(), _normal, delta, false)
 			# hop_towards() ne règle pas les pattes : cadence calée sur la vitesse réelle
 			bee.play_walk(_loop_speed / bee.simulation.walk_speed)
 			if _loop_phi >= PI and bee.is_near(_next_start, EXACT_RADIUS):

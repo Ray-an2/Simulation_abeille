@@ -147,6 +147,9 @@ var dance: DanceState
 ## Décharge le nectar dans la ruche
 var unload: UnloadState
 
+## Receveuse : reçoit le nectar des butineuses et le stocke (division du travail).
+var receive: ReceiveState
+
 # --- Dehors ---
 
 ## Exploration à la recherche d'une fleur, avec timeout.
@@ -331,6 +334,7 @@ func _ready() -> void:
 	forage = ForageState.new(self)
 	dance = DanceState.new(self)
 	watch = WatchState.new(self)
+	receive = ReceiveState.new(self)
 
 	_model_base_basis = _model.transform.basis
 	_camera_anchor_base_basis = _camera_anchor.transform.basis
@@ -412,6 +416,9 @@ func _physics_process(delta: float) -> void:
 func _exit_tree() -> void:
 	if current_state is HiveState:
 		hive.bee_left(self)
+	# exit() n'est pas appelée à la suppression : on retire l'abeille des registres
+	hive.unregister_receiver(self)
+	hive.stop_search(self)
 
 # =============================================================================
 # Transitions
@@ -588,11 +595,16 @@ func walk_towards(target: Vector3, delta: float, up: Vector3 = Vector3.UP, speed
 ## du mouvement : l'abeille tourne progressivement pour regarder vers [param facing],
 ## avec [param up] comme vecteur haut. Sert aux petits sauts entre le bas du cadre
 ## et le plancher, où elle se retourne en tombant.
-func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, delta: float) -> void:
+## [param wings] : false quand la fonction ne sert qu'à imposer l'orientation d'une
+## marche (boucle de retour de la danse). L'abeille ne bat pas des ailes,
+## le bourdonnement de saut n'est pas déclenché.
+func hop_towards(target: Vector3, speed: float, facing: Vector3, up: Vector3, delta: float,
+		wings: bool = true) -> void:
 	_face(facing, up, delta)
 	# move_toward ne dépasse jamais la cible : arrivée exacte
 	global_position = global_position.move_toward(target, speed * delta)
-	_hop_buzz_timer = HOP_BUZZ_HOLD
+	if wings:
+		_hop_buzz_timer = HOP_BUZZ_HOLD
 
 # =============================================================================
 # Requêtes (appelé par les états)
