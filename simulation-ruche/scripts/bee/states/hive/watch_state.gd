@@ -104,12 +104,13 @@ func update(delta: float) -> BeeState:
 		if _lost_time > LOST_TIMEOUT:
 			return bee.idle
 
-	# Source mémorisée : l'abeille la copie et sort la butiner
+	# Danse mémorisée : l'abeille retient le vecteur et sort le chercher
 	if _contact_time >= bee.simulation.watch_min_duration:
-		# learn_source() retient aussi la danseuse (chaîne de recrutement) et remet
-		# la rentabilité à zéro : inconnue tant que le trajet n'est pas fait, UNLOAD l'évaluera
-		bee.learn_source(hive.get_dance_flower(_dancer), _dancer)
-		return go_out_if_day(bee.go)
+		# Pas de sortie possible (lumière) : inutile de retenir un vecteur
+		# qui ne vaudra plus rien au matin, le soleil aura tourné
+		if not bee.can_leave() or not _learn_dance():
+			return bee.idle
+		return bee.leave_hive.then(bee.go)
 
 	_move_to_slot(delta)
 	return null
@@ -157,3 +158,36 @@ func _slot_position() -> Vector3:
 		back = (bee.global_position - _dancer.global_position).slide(normal)
 	back = back.normalized().rotated(normal, _slot_angle)
 	return bee.hive.clamp_to_comb(_dancer.global_position + back * FOLLOW_DISTANCE)
+	
+## Lit la danse et mémorise le vecteur de la source. Renvoie false si la danse
+## est illisible (soleil au zénith, danseuse sans source).
+##
+## La recrue ne reçoit que ce que la danse transmet :
+##   - l'angle de la course frétillante par rapport à la verticale = angle au soleil
+##     (mis à jour par la danseuse à chaque course, voir DanceState) ;
+##   - sa durée = distance ;
+##   - l'odeur de la fleur rapportée par la danseuse = l'espèce.
+## Raccourci de modélisation : on lit angle et distance dans les variables de la
+## danseuse plutôt que dans l'orientation et la durée de ses courses ; l'information
+## est la même.
+func _learn_dance() -> bool:
+	var sim := bee.simulation
+	var flower := bee.hive.get_dance_flower(_dancer)
+	if not is_instance_valid(flower):
+		return false
+
+	# Compas solaire compensé : l'horloge interne situe le soleil à cet instant,
+	# l'angle est donc converti tout de suite en direction fixe. Le soleil peut ensuite
+	# tourner pendant la sortie à pied et le vol : la direction reste juste.
+	var dir := sim.get_direction_from_dance_angle(_dancer.angle)
+	if dir == Vector3.ZERO:
+		return false
+
+	# Point indiqué par la danse, puis erreur isotrope (Towne et Gould 1988)
+	var estimate := bee.hive.global_position + dir * _dancer.distance
+	estimate.x += randfn(0.0, sim.dance_error_sigma)
+	estimate.z += randfn(0.0, sim.dance_error_sigma)
+
+	# Seule l'espèce est retenue de la fleur : son odeur, pas sa position
+	bee.learn_dance_vector(estimate, flower.species, _dancer)
+	return true

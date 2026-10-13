@@ -124,31 +124,12 @@ func _update_flower_search() -> void:
 		reset_landing()
 
 	if _flower == null:
-		_flower = _find_flower()
+		# Toutes espèces : l'exploratrice ne cherche pas d'odeur particulière
+		_flower = bee.simulation.find_visible_flower(bee)
 		if _flower != null:
-			# Réussit toujours : _find_flower() n'a retenu qu'une fleur libre
+			# Réussit toujours : find_visible_flower() n'a retenu qu'une fleur libre
 			_flower.try_claim(bee)
 			_target = _flower.get_landing_position()
-
-## Fleur libre (ni vide, ni réservée par une autre) la plus proche parmi celles
-## que l'abeille peut voir, ou null. Chaque fleur a sa propre portée de détection,
-## proportionnelle au diamètre de sa corolle (règle de l'angle apparent).
-func _find_flower() -> Flower:
-	var best: Flower = null
-	var best_d2 := INF
-	# Facteur commun à toutes les fleurs : portée = diamètre × factor
-	var half_angle := deg_to_rad(bee.simulation.detection_angle_deg) * 0.5
-	var factor := 0.5 / tan(half_angle)
-	for f in bee.simulation.flowers:
-		if not f.is_free_for(bee):
-			continue
-		var reach := f.corolla_diameter * factor
-		# Comparaison des carrés : évite une racine carrée par fleur
-		var d2 := bee.global_position.distance_squared_to(f.get_landing_position())
-		if d2 < reach * reach and d2 < best_d2:
-			best = f
-			best_d2 = d2
-	return best
 
 # =============================================================================
 # Déplacement : marche de Lévy corrélée

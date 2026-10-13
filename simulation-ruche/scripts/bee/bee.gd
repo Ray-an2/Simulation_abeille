@@ -244,6 +244,23 @@ var _prev_forward := Vector3.ZERO
 ## pile dans l'axe, les abeilles se répartissent des deux côtés au lieu de partir toutes à gauche.
 var _avoid_side := 1.0
 
+# --- Vecteur de danse ---
+
+## Point estimé de la source, lu dans une danse et déjà entaché de son erreur.
+## Valable pour un seul trajet : GO l'efface en sortant.
+var dance_target := Vector3.ZERO
+
+## Espèce annoncée (Flower.Species) : la recrue la reconnaît à l'odeur
+## rapportée par la danseuse. -1 sans vecteur.
+var dance_species: int = -1
+
+## Danseuse qui a transmis le vecteur. Créditée (recruited_by) seulement
+## si la recrue trouve une fleur.
+var dance_teacher: Bee = null
+
+## true tant qu'un vecteur de danse est mémorisé.
+var _has_dance_vector := false
+
 # --- Orientation d'origine (bee.tscn) ---
 
 ## Orientation d'origine du modèle dans bee.tscn, à laquelle on ajoute l'inclinaison.
@@ -642,6 +659,27 @@ func forget_source() -> void:
 	known_profitability = 0.0
 	known_efficiency = 0.0
 	recruited_by = null
+	
+# =============================================================================
+# Vecteur de danse (recrue, appelé par WATCH et GO)
+# =============================================================================
+
+## Mémorise le vecteur appris en WATCH.
+func learn_dance_vector(target: Vector3, species: int, dancer: Bee) -> void:
+	dance_target = target
+	dance_species = species
+	dance_teacher = dancer
+	_has_dance_vector = true
+
+## Oublie le vecteur (trajet terminé, réussi ou non).
+func forget_dance_vector() -> void:
+	dance_species = -1
+	dance_teacher = null
+	_has_dance_vector = false
+
+## true si l'abeille a un vecteur de danse à suivre.
+func has_dance_vector() -> bool:
+	return _has_dance_vector
 	
 ## Efficacité énergétique (gain - coût) / coût d'un trajet. Utilisée par UNLOAD
 ## pour juger la source, et par FORAGE pour décider d'un départ anticipé.

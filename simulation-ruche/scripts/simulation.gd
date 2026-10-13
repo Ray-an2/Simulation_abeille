@@ -158,6 +158,24 @@ class_name Simulation extends Node3D
 @export_range(1, 12) var max_followers: int = 6
 
 
+@export_group("Recrutement")
+
+## Écart-type (m) de l'erreur de la danse sur le point estimé, sur chaque axe horizontal.
+## Erreur isotrope en mètres, indépendante de la distance : l'erreur de distance est du
+## même ordre que l'erreur de direction, et la dispersion absolue des recrues varie peu
+## avec la distance (Towne et Gould 1988). 4,4 m donne un écart moyen de 5,5 m
+## (σ·√(π/2)), celui mesuré au radar par Riley et al. (2005).
+@export var dance_error_sigma: float = 4.4
+
+## Rayon (m) de la zone de recherche autour du point estimé.
+## Valeur de réglage : environ 3σ, pour que la source soit presque toujours dedans.
+@export var recruit_search_radius: float = 12.0
+
+## Durée maximale (s) de recherche avant de rentrer bredouille.
+## Valeur de réglage, non mesurée.
+@export var recruit_search_timeout: float = 60.0
+
+
 @export_group("Déplacement")
 
 @export_subgroup("Vol")
@@ -429,3 +447,37 @@ func get_dance_angle(source_pos: Vector3, hive_pos: Vector3) -> float:
 	if to_source.length() < 0.001 or to_sun.length() < 0.001:
 		return 0.0
 	return to_sun.signed_angle_to(to_source, Vector3.UP)
+	
+## Inverse de get_dance_angle() : direction horizontale (unitaire) qui fait
+## l'angle [param angle] avec la direction du soleil à cet instant.
+## Vector3.ZERO si le soleil est au zénith : il ne donne alors plus de direction,
+## comme pour l'abeille réelle (jamais le cas à la latitude de Brest).
+func get_direction_from_dance_angle(angle: float) -> Vector3:
+	var to_sun: Vector3 = sky.sun.global_transform.basis.z   # direction vers le soleil
+	to_sun.y = 0.0
+	if to_sun.length() < 0.001:
+		return Vector3.ZERO
+	return to_sun.normalized().rotated(Vector3.UP, angle)
+
+
+## Fleur libre (ni vide, ni réservée par une autre) la plus proche que [param bee]
+## peut voir, ou null. [param species] : -1 pour toutes les espèces, sinon seulement
+## celle-ci (recrue qui cherche l'odeur annoncée). Portée de chaque fleur
+## proportionnelle au diamètre de sa corolle (règle de l'angle apparent).
+func find_visible_flower(bee: Bee, species: int = -1) -> Flower:
+	var best: Flower = null
+	var best_d2 := INF
+	# Facteur commun à toutes les fleurs : portée = diamètre × factor
+	var factor := 0.5 / tan(deg_to_rad(detection_angle_deg) * 0.5)
+	for f in flowers:
+		if species >= 0 and f.species != species:
+			continue
+		if not f.is_free_for(bee):
+			continue
+		var reach := f.corolla_diameter * factor
+		# Comparaison des carrés : évite une racine carrée par fleur
+		var d2 := bee.global_position.distance_squared_to(f.get_landing_position())
+		if d2 < reach * reach and d2 < best_d2:
+			best = f
+			best_d2 = d2
+	return best

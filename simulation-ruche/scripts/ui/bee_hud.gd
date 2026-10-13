@@ -189,6 +189,14 @@ func _state_rows(bee: Bee, state: StringName, in_state: float) -> Array[Dictiona
 			if is_instance_valid(bee.known_flower):
 				var d := bee.global_position.distance_to(bee.known_flower.get_landing_position())
 				rows.append(_row_pair("Distance à la fleur", "%.1f m" % d))
+			elif bee.go.is_searching():
+				# Recrue autour du point dansé : temps de recherche restant
+				var left: float = bee.go.get_search_left()
+				rows.append(_row_gauge("Recherche (recrue)", "reste %.0f s" % left,
+						1.0 - left / maxf(sim.recruit_search_timeout, 0.001), Color.WHITE))
+			elif bee.has_dance_vector():
+				var d := sim.get_flat_distance(bee.global_position, bee.dance_target)
+				rows.append(_row_pair("Distance au point dansé", "%.1f m" % d))
 		&"ForageState":
 			if is_instance_valid(bee.known_flower):
 				rows.append(_row_pair("Fleur", _flower_state_label(bee.known_flower)))
