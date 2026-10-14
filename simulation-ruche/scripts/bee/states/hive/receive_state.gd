@@ -73,6 +73,12 @@ const FAN_START_RATE := 0.01
 const FAN_DURATION_MIN := 15.0
 const FAN_DURATION_MAX := 60.0
 
+## Part des receveuses initiales qui commencent par aller ventiler (start_at_launch).
+## Sans elle, la première ventileuse n'apparaît qu'après le premier tirage
+## de FAN_START_RATE, soit une à deux minutes après le lancement.
+## Valeur de réglage, non mesurée.
+const INITIAL_FAN_SHARE := 0.25
+
 # =============================================================================
 # Types
 # =============================================================================
@@ -148,6 +154,17 @@ func enter() -> void:
 	_fan_left = 0.0
 	bee.hive.register_receiver(bee)
 	_go_to_area()
+
+## Mise en place d'une receveuse déjà en poste au lancement (appelé par Simulation,
+## juste après change_state(receive)). Une vraie colonie démarre avec sa répartition
+## des tâches : on évite ainsi le régime transitoire où les receveuses apparaissent
+## une à une depuis IDLE.
+## Le temps de désœuvrement est tiré au hasard : les receveuses initiales ne
+## retournent pas toutes en IDLE au même instant, receiver_idle_timeout plus tard.
+func start_at_launch() -> void:
+	_idle_time = randf() * bee.simulation.receiver_idle_timeout
+	if randf() < INITIAL_FAN_SHARE:
+		_start_fanning()
 
 func exit() -> void:
 	bee.hive.unregister_receiver(bee)

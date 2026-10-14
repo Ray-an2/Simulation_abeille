@@ -409,11 +409,24 @@ func _ready() -> void:
 		# local du conteneur.
 		bee.transform = bees_container.global_transform.affine_inverse() * hive.get_random_spawn_transform()
 		bees_container.add_child(bee)	# Position d'apparition
+		# Une partie de la colonie est déjà receveuse au lancement, dans la proportion
+		# d'équilibre : on évite le régime transitoire où toutes partent d'IDLE
+		if randf() < _initial_receiver_share():
+			bee.change_state(bee.receive)
+			bee.receive.start_at_launch()
 
 ## Nom d'une abeille, en clin d'œil aux Fourmis de Bernard Werber (« 103 683e »).
 ## Ouvrières, donc féminin : 1re, puis 2e, 3e…
 func _bee_name(n: int) -> String:
 	return "1re" if n == 1 else "%de" % n
+
+## Part des abeilles déjà receveuses au lancement : proportion d'équilibre
+## donnée par la loi de Little avec p_receive et receiver_idle_timeout.
+## Avec les valeurs par défaut : 0,25 / 1,25 = 20 %, la proportion de Seeley (1989).
+## Calculée et non saisie : elle reste cohérente si l'un des deux paramètres change.
+func _initial_receiver_share() -> float:
+	var x := p_receive * receiver_idle_timeout
+	return x / (1.0 + x)
 
 ## Fait avancer l'horloge simulée et le soleil.
 func _process(delta: float) -> void:
