@@ -50,6 +50,16 @@ const CAMERA_BANK_FACTOR := 0.5
 ## à chaque frame (vue abeille, gros plan sur le cadre).
 const ANIM_NEAR := 0.5
 
+## Au-delà de cette distance (m), l'abeille ne fait que quelques pixels à l'écran :
+## l'animation est mise à jour toutes les ANIM_VERY_FAR_STEP frames.
+const ANIM_FAR := 3.0
+const ANIM_VERY_FAR_STEP := 12
+
+## Hors champ : l'animation n'avance que toutes les ANIM_HIDDEN_STEP frames.
+## On ne la fige pas complètement, pour que les animations non bouclées se terminent
+## et que _update_buzz() lise toujours une animation à jour (délai d'au plus 0,5 s).
+const ANIM_HIDDEN_STEP := 30
+
 ## Au-delà de ANIM_NEAR : une mise à jour de l'animation toutes les N frames.
 const ANIM_FAR_STEP := 4
 
@@ -364,7 +374,7 @@ func _ready() -> void:
 
 	# L'animation n'avance plus toute seule : _process() l'avance, plus ou moins souvent
 	_anim.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
-	_anim_offset = randi() % ANIM_FAR_STEP
+	_anim_offset = randi() % 60
 
 	_avoid_side = 1.0 if randf() < 0.5 else -1.0
 	
@@ -385,15 +395,24 @@ func _ready() -> void:
 
 	change_state(idle)
 
-## Avance l'animation à chaque frame près de la caméra, toutes les ANIM_FAR_STEP frames
-## au-delà. Le temps accumulé est rattrapé d'un coup : la vitesse reste juste,
+## Avance l'animation plus ou moins souvent selon ce que voit la caméra : à chaque frame
+## de près, de moins en moins souvent avec la distance, rarement hors champ.
+## Le temps accumulé est rattrapé d'un coup : la vitesse reste juste,
 ## seule la fluidité baisse, ce qui ne se voit pas de loin.
 func _process(delta: float) -> void:
 	_anim_accum += delta
 	var step := 1
-	var cam := get_viewport().get_camera_3d()
-	if cam != null and cam.global_position.distance_squared_to(global_position) > ANIM_NEAR * ANIM_NEAR:
-		step = ANIM_FAR_STEP
+	# Caméra relevée une seule fois par frame pour toute la colonie
+	var cam := simulation.get_render_camera()
+	if cam != null:
+		if not cam.is_position_in_frustum(global_position):
+			step = ANIM_HIDDEN_STEP
+		else:
+			var d2 := cam.global_position.distance_squared_to(global_position)
+			if d2 > ANIM_FAR * ANIM_FAR:
+				step = ANIM_VERY_FAR_STEP
+			elif d2 > ANIM_NEAR * ANIM_NEAR:
+				step = ANIM_FAR_STEP
 	if (Engine.get_process_frames() + _anim_offset) % step != 0:
 		return
 	_anim.advance(_anim_accum)

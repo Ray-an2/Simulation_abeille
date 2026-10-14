@@ -432,6 +432,15 @@ var sun_setting := false
 ## Hauteur du soleil relevée à la dernière mise à jour de sun_setting.
 var _last_elevation := 0.0
 
+## Caméra de rendu, relevée une fois par frame (voir get_render_camera).
+var _render_camera: Camera3D = null
+var _render_camera_frame := -1
+
+## Hauteur du soleil mise en cache pour le pas physique en cours : chaque abeille
+## la demande à chaque pas (Bee.can_leave), alors qu'elle est la même pour toutes.
+var _sun_elevation := 0.0
+var _sun_elevation_frame := -1
+
 
 # ============================================================
 # Cycle de vie
@@ -506,11 +515,15 @@ func hours_from(delta: float) -> float:
 func is_daytime() -> bool:
 	return sky.is_day()
 	
-## Hauteur du soleil au-dessus de l'horizon (degrés), négative la nuit.
+## Hauteur du soleil au-dessus de l'horizon (degrés).
 ## basis.z du DirectionalLight pointe vers le soleil (voir get_dance_angle).
 func get_sun_elevation() -> float:
-	var to_sun: Vector3 = sky.sun.global_transform.basis.z.normalized()
-	return rad_to_deg(asin(clampf(to_sun.y, -1.0, 1.0)))
+	var frame := Engine.get_physics_frames()
+	if frame != _sun_elevation_frame:
+		_sun_elevation_frame = frame
+		var to_sun: Vector3 = sky.sun.global_basis.z.normalized()
+		_sun_elevation = rad_to_deg(asin(clampf(to_sun.y, -1.0, 1.0)))
+	return _sun_elevation
 
 
 # ============================================================
@@ -565,3 +578,12 @@ func find_visible_flower(bee: Bee, species: int = -1) -> Flower:
 			best = f
 			best_d2 = d2
 	return best
+
+## Caméra réellement utilisée pour le rendu. Mise en cache pour la frame :
+## 200 abeilles la demandent dans leur _process().
+func get_render_camera() -> Camera3D:
+	var frame := Engine.get_process_frames()
+	if frame != _render_camera_frame:
+		_render_camera_frame = frame
+		_render_camera = get_viewport().get_camera_3d()
+	return _render_camera
