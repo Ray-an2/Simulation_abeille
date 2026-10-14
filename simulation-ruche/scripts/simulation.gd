@@ -93,6 +93,43 @@ class_name Simulation extends Node3D
 @export var store_duration: float = 10.0
 
 
+
+
+@export_group("Danse trémulante")
+
+## Temps de recherche d'une receveuse (s) à partir duquel une butineuse revenue
+## d'une bonne source fait une danse trémulante plutôt que de repartir.
+## 50 s : seuil mesuré par Seeley (1992). Entre max_wait_time (20 s) et ce seuil,
+## la butineuse ne fait ni danse frétillante ni danse trémulante.
+@export var tremble_wait_threshold: float = 50.0
+
+## Durée moyenne (s) d'une danse trémulante (± 30 % d'une abeille à l'autre).
+## Mesure réelle : 30 min en moyenne. Ramenée ici à une valeur du même ordre que
+## dance_duration_max, qui n'est pas non plus à l'échelle réelle.
+## Valeur de réglage, non mesurée.
+@export var tremble_duration: float = 90.0
+
+## Distance (m) à laquelle une abeille en IDLE perçoit une trémulante :
+## au contact, une longueur d'abeille et ses antennes.
+@export var tremble_contact_radius: float = 0.02
+
+## Probabilité par seconde qu'une abeille en IDLE sans source devienne receveuse
+## tant qu'elle est au contact d'une trémulante (remplace p_receive pendant le contact).
+## 0,15 : environ une chance sur quatre lors d'un contact de 2 s.
+## Valeur de réglage, non mesurée.
+@export var tremble_recruit_rate: float = 0.15
+
+## Probabilité par seconde qu'une trémulante au contact d'une danseuse frétillante
+## lui donne un signal d'arrêt. Valeur de réglage, non mesurée.
+@export var stop_signal_rate: float = 1.0
+
+## Part du temps de danse restant que retire chaque signal d'arrêt (0 à 1).
+## 0,5 : deux signaux réduisent la danse restante au quart. Valeur de réglage :
+## Kirchner (1993) et Nieh (1993) montrent que le signal écourte la danse,
+## sans mesure simple de l'effet d'un signal isolé.
+@export_range(0.0, 1.0) var stop_signal_strength: float = 0.5
+
+
 @export_group("Exploration")
 
 ## Probabilité par seconde qu'une abeille en IDLE parte explorer juste après

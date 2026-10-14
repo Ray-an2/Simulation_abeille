@@ -12,7 +12,7 @@ extends CanvasLayer
 @export var refresh_interval := 0.5
 
 ## Ordre d'affichage des états (les états inconnus sont ajoutés à la fin)
-const STATE_ORDER := ["IDLE", "LEAVE", "SCOUT", "WATCH", "GO", "FORAGE", "RETURN", "ENTER", "UNLOAD", "DANCE", "RECEIVER"]
+const STATE_ORDER := ["IDLE", "LEAVE", "SCOUT", "WATCH", "GO", "FORAGE", "RETURN", "ENTER", "UNLOAD", "DANCE", "TREMBLE", "RECEIVER"]
 
 var _label: Label
 var _timer := 0.0

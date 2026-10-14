@@ -42,6 +42,7 @@ const STATE_LABELS := {
 	&"WatchState": "Suit une danse",
 	&"DanceState": "Danse",
 	&"ReceiveState": "Receveuse",
+	&"TrembleState": "Danse trémulante",
 }
 
 # =============================================================================
@@ -240,15 +241,23 @@ func _state_rows(bee: Bee, state: StringName, in_state: float) -> Array[Dictiona
 					"%.1f / %.1f s" % [contact, sim.watch_min_duration],
 					contact / maxf(sim.watch_min_duration, 0.001), GOOD_COLOR))
 		&"DanceState":
-			# Durée prévue par DanceState : proportionnelle à la rentabilité
+			# Temps restant lu dans DanceState : les signaux d'arrêt le raccourcissent
 			var total := sim.dance_duration_max * bee.known_profitability
-			rows.append(_row_gauge("Danse", "reste %.1f s" % maxf(total - in_state, 0.0),
-					in_state / maxf(total, 0.001), MID_COLOR))
-			# Boucle de recrutement : abeilles qui suivent cette danse en ce moment
-			rows.append(_row_pair("Suiveuses", "%d / %d"
-					% [bee.hive.get_follower_count(bee), sim.max_followers]))
+			var left: float = bee.dance.get_remaining()
+			rows.append(_row_gauge("Danse", "reste %.1f s" % left,
+					1.0 - left / maxf(total, 0.001), MID_COLOR))
+			var signals: int = bee.dance.get_stop_signals()
+			if signals > 0:
+				rows.append(_row_pair("Signaux d'arrêt reçus", str(signals), BAD_COLOR))
+		&"TrembleState":
+			# Boucle de saturation : la colonie manque de receveuses
+			var tremble_state := bee.tremble
+			var left := tremble_state.get_remaining()
+			rows.append(_row_gauge("Danse trémulante", "reste %.0f s" % left,
+					1.0 - left / maxf(tremble_state.get_duration(), 0.001), BAD_COLOR))
+			rows.append(_row_pair("Receveuses recrutées", str(tremble_state.get_recruits())))
+			rows.append(_row_pair("Signaux d'arrêt donnés", str(tremble_state.get_stop_signals())))
 	return rows
-
 
 ## Haut droit : dernières transitions, la plus récente en haut.
 func _journal_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:

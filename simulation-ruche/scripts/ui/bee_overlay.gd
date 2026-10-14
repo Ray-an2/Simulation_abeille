@@ -42,6 +42,7 @@ const STATE_COLORS := {
 	&"GoState": Color(0.75, 0.9, 1.0),
 	&"ForageState": Color(0.55, 0.85, 0.45),
 	&"ReturnState": Color(0.6, 0.6, 0.6),
+	&"TrembleState": Color(0.85, 0.35, 0.6),
 }
 
 ## Couleur des états absents de STATE_COLORS : repère visuel d'un état oublié.
@@ -649,6 +650,10 @@ func _hive_card(h: Hive) -> InfoCard:
 			CARD_SATURATED_COLOR if saturated else CARD_HIVE_COLOR)
 	card.pair("Butineuses en recherche", "%d" % searching,
 			CARD_SATURATED_COLOR if saturated else InfoCard.TEXT_COLOR)
+		# Réponse de la colonie à la saturation : recrutement de receveuses
+	var trembles := h.get_tremble_count()
+	card.pair("Danses trémulantes", "%d" % trembles,
+			CARD_SATURATED_COLOR if trembles > 0 else InfoCard.TEXT_COLOR)
 
 	# --- Recrutement (boucle positive) ---
 	card.section("Recrutement · boucle positive")

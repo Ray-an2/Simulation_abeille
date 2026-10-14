@@ -2,7 +2,7 @@ class_name IdleState extends HiveState
 ## Attente dans la ruche (abeille jaune). État initial.
 ## L'abeille alterne phases de marche sinueuse et pauses sur le cadre,
 ## jusqu'à détecter une danse (→ WATCH), partir explorer (→ SCOUT)
-## ou devenir receveuse (→ RECEIVE).
+## ou devenir receveuse (→ RECEIVE), plus souvent au contact d'une danse trémulante.
 ## Le déplacement lui-même (accélération, évitement, bords) est délégué à bee.walker.
 ##
 ## Envie d'explorer : elle croît avec le temps passé de jour sans croiser de danse.
@@ -75,11 +75,21 @@ func update(delta: float) -> BeeState:
 	if dancer != null:
 		return bee.watch.follow(dancer)
 
-	# Engagement spontané comme receveuse, réservé aux abeilles qui ne butinent pas :
-	# ni source connue, ni vecteur de danse. Probabilité par seconde, comme p_scout.
-	if not is_instance_valid(bee.known_flower) and not bee.has_dance_vector() \
-			and randf() < bee.simulation.p_receive * delta:
-		return bee.receive
+		# Engagement comme receveuse, réservé aux abeilles qui ne butinent pas :
+	# ni source connue, ni vecteur de danse. Probabilité par seconde, comme p_scout :
+	# p_receive en temps normal, tremble_recruit_rate au contact d'une trémulante
+	# (Seeley et al. 1996 : la danse trémulante fait monter la part de receveuses).
+	if not is_instance_valid(bee.known_flower) and not bee.has_dance_vector():
+		var sim := bee.simulation
+		var trembler := _find_trembler()
+		var rate := sim.p_receive
+		if trembler != null:
+			rate = maxf(sim.tremble_recruit_rate, sim.p_receive)
+		if randf() < rate * delta:
+			# Crédit pour l'interface seulement : la trémulante n'en tient pas compte
+			if trembler != null:
+				trembler.tremble.credit_recruit()
+			return bee.receive
 
 	# Pas de sortie si la lumière est insuffisante pour cette abeille
 	if day:
@@ -192,3 +202,11 @@ func _check_dances(delta: float, day: bool) -> Bee:
 			best = d2
 			nearest = dancer
 	return nearest
+
+## Trémulante au contact, ou null. Perception locale : seule une trémulante
+## à moins de tremble_contact_radius compte.
+## Peu de trémulantes à la fois : la requête reste peu coûteuse.
+func _find_trembler() -> Bee:
+	var nearby := bee.hive.get_tremblers_near(bee.global_position,
+			bee.simulation.tremble_contact_radius)
+	return null if nearby.is_empty() else nearby[0]

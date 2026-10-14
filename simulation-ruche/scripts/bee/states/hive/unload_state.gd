@@ -4,6 +4,7 @@ class_name UnloadState extends HiveState
 ## recherche d'une receveuse libre au contact -> mise en place tête contre tête ->
 ## transfert (trophallaxie) -> évaluation de la source.
 ## Sorties : DANCE (source au-dessus du seuil de danse), GO (source gardée sans danse),
+##           TREMBLE (bonne source, mais receveuse très longue à trouver),
 ##           IDLE (source abandonnée sous profitability_low).
 ##
 ## Pas de file d'attente : la butineuse ne trouve une receveuse qu'en la croisant.
@@ -180,6 +181,12 @@ func update(delta: float) -> BeeState:
 
 	if verdict == 1:
 		var sim := bee.simulation
+		# Recherche très longue, pour une source qu'elle aurait annoncée sans
+		# saturation : la colonie manque de receveuses, elle fait la danse trémulante.
+		# Seeley (1992) : recherche > 50 s → trémulante, < 20 s → frétillante.
+		if _search_time >= sim.tremble_wait_threshold and bee.known_profitability \
+				>= sim.dance_threshold_min + bee.dance_threshold_offset:
+			return bee.tremble
 		var wait_ratio := clampf(_search_time / sim.max_wait_time, 0.0, 1.0)
 		# Seuil de danse : bas si une receveuse a été trouvée tout de suite,
 		# haut si la recherche a été longue, plus l'écart individuel

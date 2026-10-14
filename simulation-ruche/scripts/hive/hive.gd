@@ -182,6 +182,9 @@ var _dances: Dictionary[Bee, Flower] = {}
 ## Nombre de suiveuses par danseuse. Tenu à jour par WatchState (enter / exit).
 var _followers: Dictionary[Bee, int] = {}
 
+## Trémulantes en cours. Tenue à jour par TrembleState (enter / exit).
+var _tremblers: Array[Bee] = []
+
 # --- Déchargement ---
 
 ## Nectar accumulé par la colonie depuis le début de la simulation.
@@ -598,9 +601,6 @@ func get_dancers_near(pos: Vector3, radius: float) -> Array[Bee]:
 			result.append(dancer)
 	return result
 
-# =============================================================================
-# Déchargement (boucle négative : saturation)
-# =============================================================================
 
 # =============================================================================
 # Déchargement et receveuses (boucle négative : saturation)
@@ -690,6 +690,35 @@ func get_free_receiver_count() -> int:
 ## Nombre de butineuses qui cherchent une receveuse (interface).
 func get_searching_count() -> int:
 	return _searching.size()
+
+
+# =============================================================================
+# Danses trémulantes (boucle négative : saturation)
+# =============================================================================
+
+## Déclare que [param bee] fait une danse trémulante.
+func start_tremble(bee: Bee) -> void:
+	if not _tremblers.has(bee):
+		_tremblers.append(bee)
+
+## Retire la trémulante [param bee]. Sans effet si elle ne tremblait pas.
+func stop_tremble(bee: Bee) -> void:
+	_tremblers.erase(bee)
+
+## Trémulantes à moins de [param radius] de [param pos].
+## Peu de trémulantes à la fois : un simple parcours suffit, sans grille.
+func get_tremblers_near(pos: Vector3, radius: float) -> Array[Bee]:
+	var result: Array[Bee] = []
+	# Boucle non typée : une abeille supprimée peut rester dans la liste
+	for t in _tremblers:
+		if is_instance_valid(t) and t.is_near(pos, radius):
+			result.append(t)
+	return result
+
+## Nombre de danses trémulantes en cours (interface).
+func get_tremble_count() -> int:
+	return _tremblers.size()
+
 
 # =============================================================================
 # Son

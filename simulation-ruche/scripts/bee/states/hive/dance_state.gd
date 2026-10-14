@@ -166,6 +166,9 @@ var _wiggle_time := 0.0
 ## Rotation de frétillement actuellement appliquée au corps (rad).
 var _wiggle_yaw := 0.0
 
+## Signaux d'arrêt reçus pendant cette danse (interface).
+var _stop_signals := 0
+
 # =============================================================================
 # Méthodes de l'état
 # =============================================================================
@@ -179,6 +182,7 @@ func enter() -> void:
 	_phase = Phase.TO_FLOOR
 	_floor_time = 0.0
 	_wiggle_yaw = 0.0
+	_stop_signals = 0
 	# Première boucle d'un côté ou de l'autre : les danseuses ne sont pas synchrones
 	_loop_sign = 1.0 if randf() < 0.5 else -1.0
 	_reset_wander()
@@ -249,6 +253,26 @@ func update(delta: float) -> BeeState:
 				_begin_run(_next_start)
 
 	return null
+	
+# =============================================================================
+# Signal d'arrêt et lecture (appelé par TrembleState et par l'interface)
+# =============================================================================
+
+## Signal d'arrêt donné par une trémulante (Kirchner 1993 ; Nieh 1993) :
+## le temps de danse restant diminue de stop_signal_strength.
+## La course en cours n'est pas interrompue : la fin de danse est testée
+## en fin de course ou pendant la boucle, comme d'habitude.
+func receive_stop_signal() -> void:
+	_remaining *= 1.0 - bee.simulation.stop_signal_strength
+	_stop_signals += 1
+
+## Temps de danse restant (s), signaux d'arrêt compris.
+func get_remaining() -> float:
+	return maxf(_remaining, 0.0)
+
+## Signaux d'arrêt reçus depuis le début de la danse.
+func get_stop_signals() -> int:
+	return _stop_signals
 
 # =============================================================================
 # Géométrie de la figure

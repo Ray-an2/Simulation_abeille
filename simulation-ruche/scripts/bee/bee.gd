@@ -150,6 +150,9 @@ var unload: UnloadState
 ## Receveuse : reçoit le nectar des butineuses et le stocke (division du travail).
 var receive: ReceiveState
 
+## Danse trémulante : signale que la ruche manque de receveuses (saturation).
+var tremble: TrembleState
+
 # --- Dehors ---
 
 ## Exploration à la recherche d'une fleur, avec timeout.
@@ -335,6 +338,7 @@ func _ready() -> void:
 	dance = DanceState.new(self)
 	watch = WatchState.new(self)
 	receive = ReceiveState.new(self)
+	tremble = TrembleState.new(self)
 
 	_model_base_basis = _model.transform.basis
 	_camera_anchor_base_basis = _camera_anchor.transform.basis
@@ -419,6 +423,7 @@ func _exit_tree() -> void:
 	# exit() n'est pas appelée à la suppression : on retire l'abeille des registres
 	hive.unregister_receiver(self)
 	hive.stop_search(self)
+	hive.stop_tremble(self)
 
 # =============================================================================
 # Transitions
