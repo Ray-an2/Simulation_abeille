@@ -280,15 +280,17 @@ func _cargo_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 	var flower_color := _flower_color(flower)
 
 	var capacity := maxf(sim.forage_capacity, 0.001)
-	# Une receveuse porte sa charge dans ReceiveState (_load_nectar), pas dans
-	# bee.nectar, réservé aux butineuses (pelotes de pollen, compteur du tracker)
-	var carried := bee.nectar
-	if bee.current_state == bee.receive:
-		carried = bee.receive.get_load_nectar()
+	# Charge selon le rôle : jabot d'une butineuse ou chargement d'une receveuse
+	var carried := bee.get_carried_nectar()
 	rows.append(_row_gauge("Nectar transporté", "%.1f / %.1f" % [carried, sim.forage_capacity],
 			carried / capacity, flower_color))
 	if flower == null:
-		rows.append(_row_text("Aucune source connue"))
+		if bee.has_dance_vector():
+			# Recrue : vecteur de danse appris, fleur pas encore trouvée
+			rows.append(_row_text("Recrue : cherche une fleur de %s"
+					% _species_label(bee.dance_species)))
+		else:
+			rows.append(_row_text("Aucune source connue"))
 		return rows
 
 	rows.append(_row_gap())

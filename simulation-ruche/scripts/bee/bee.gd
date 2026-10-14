@@ -963,3 +963,21 @@ func _update_buzz(delta: float) -> void:
 		# Ailes au repos et son quasi éteint : on libère le lecteur
 		if not flapping and _buzz.volume_db < BUZZ_OFF_DB + 1.0:
 			_buzz.stop()
+
+# =============================================================================
+# Lecture (appelé par l'interface)
+# =============================================================================
+
+## Nectar (µL) porté par l'abeille, quel que soit son rôle : jabot d'une butineuse
+## (nectar), ou chargement d'une receveuse en route vers les cellules.
+## Réservé à l'interface : les états continuent de lire nectar directement.
+func get_carried_nectar() -> float:
+	if current_state == receive:
+		return receive.get_load_nectar()
+	return nectar
+
+## Sucre (mg) porté, même principe que get_carried_nectar().
+func get_carried_sugar() -> float:
+	if current_state == receive:
+		return receive.get_load_sugar()
+	return sugar

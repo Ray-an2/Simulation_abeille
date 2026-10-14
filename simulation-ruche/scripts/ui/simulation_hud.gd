@@ -104,7 +104,7 @@ func _build_text() -> String:
 		counts[key] = counts.get(key, 0) + 1
 		if bee.known_flower != null:
 			with_source += 1
-		carried += bee.nectar
+		carried += bee.get_carried_nectar()
 
 	lines.append("")
 	lines.append("ABEILLES (%d) | connaissent une source : %d | nectar porté : %.1f µL" % [

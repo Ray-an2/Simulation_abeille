@@ -551,8 +551,9 @@ func _bee_info(bee: Bee) -> String:
 	var lines := PackedStringArray()
 	lines.append(str(bee.name))
 	lines.append("État : %s" % _state_name(bee).trim_suffix("State"))
-	lines.append("Nectar : %.1f / %.1f µL" % [bee.nectar, bee.simulation.forage_capacity])
-	lines.append("Sucre porté : %.1f mg" % bee.sugar)
+	# Charge selon le rôle : jabot d'une butineuse ou chargement d'une receveuse
+	lines.append("Nectar : %.1f / %.1f µL" % [bee.get_carried_nectar(), bee.simulation.forage_capacity])
+	lines.append("Sucre porté : %.1f mg" % bee.get_carried_sugar())
 
 	var flower := bee.known_flower
 	if is_instance_valid(flower):
@@ -560,6 +561,14 @@ func _bee_info(bee: Bee) -> String:
 		lines.append("Stock source : %.1f µL" % flower.resource)
 		lines.append("Rentabilité : %.2f" % bee.known_profitability)
 		lines.append("Efficacité énergétique : %.1f" % bee.known_efficiency)
+	elif bee.has_dance_vector():
+		# Recrue : elle ne connaît que le point indiqué par la danse et l'odeur
+		# de l'espèce, pas la fleur (known_flower reste null jusqu'à la trouvaille)
+		var d := bee.simulation.get_flat_distance(bee.hive.global_position, bee.dance_target)
+		lines.append("Source : point dansé à %.0f m (%s)"
+				% [d, Flower.SPECIES_LABELS.get(bee.dance_species, "?")])
+		if is_instance_valid(bee.dance_teacher):
+			lines.append("Recrutée par : %s" % bee.dance_teacher.name)
 	else:
 		lines.append("Source : aucune")
 

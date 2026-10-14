@@ -299,6 +299,10 @@ func get_idle_time() -> float:
 func get_load_nectar() -> float:
 	return _load_nectar
 
+## Sucre (mg) porté vers les cellules : non nul entre take_load() et le dépôt.
+func get_load_sugar() -> float:
+	return _load_sugar
+
 ## Chargements stockés depuis l'entrée dans l'état.
 func get_loads_stored() -> int:
 	return _loads_stored
