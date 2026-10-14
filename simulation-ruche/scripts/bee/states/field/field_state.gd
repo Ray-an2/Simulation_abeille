@@ -101,6 +101,27 @@ const HOVER_TILT_FACTOR := 0.5
 const HOVER_MAX_TILT := PI / 2.0
 
 # =============================================================================
+# Constantes : arrivée sur une fleur
+# =============================================================================
+
+## Distance (m) du point d'entrée devant la corolle, sur sa normale.
+## Inférieure à FINAL_MIN_DISTANCE : arrivée sur ce point, l'abeille est forcément
+## assez près et dans le cône pour passer en approche finale.
+const FLOWER_GATE_DISTANCE := 0.1
+
+## Cosinus du demi-angle du cône, centré sur la normale de la corolle, dans lequel
+## l'approche finale peut commencer (0,5 = 60°). Hors du cône, l'abeille se replace.
+const FLOWER_CONE_COS := 0.5
+
+## Marge (m) autour du bord de la corolle pendant le contournement :
+## environ une longueur d'ouvrière (12 à 15 mm), arrondie.
+const FLOWER_RIM_MARGIN := 0.02
+
+## Hauteur minimale (m) au-dessus du plan de la corolle pour que l'abeille soit
+## considérée devant. Évite de raser les pétales en passant d'un côté à l'autre.
+const FLOWER_FRONT_MARGIN := 0.01
+
+# =============================================================================
 # Types
 # =============================================================================
 
@@ -332,6 +353,75 @@ func update_landing(target: Vector3, normal: Vector3, hover_time: float,
 				_landing = Landing.DONE
 
 	return _landing == Landing.DONE
+
+## Atterrissage sur une fleur, par la face ouverte de la corolle.
+## Remplace l'appel direct à update_landing() pour les fleurs (GO, SCOUT, FORAGE).
+## Tant que l'approche finale n'a pas commencé, l'abeille vise un point devant
+## la corolle. Si elle arrive par l'arrière, elle contourne le bord au lieu de
+## traverser les pétales. L'approche finale ne démarre que dans le cône
+## FLOWER_CONE_COS autour de la normale. Ensuite, update_landing() gère seule
+## la courbe, le stationnaire et la pose.
+func update_flower_landing(flower: Flower, delta: float, max_speed := 0.0) -> bool:
+	var target := flower.get_landing_position()
+	var normal := flower.get_landing_normal()
+
+	if _landing == Landing.APPROACH:
+		var dist := bee.global_position.distance_to(target)
+		# Mêmes conditions de distance que dans update_landing(), plus le cône de la fleur
+		var can_start_final := dist <= maxf(bee.get_flight_speed() * LANDING_TAU, FINAL_MIN_DISTANCE) \
+				and _in_flower_cone(target, normal, dist)
+		if not can_start_final:
+			# Vol normal (évitement compris) vers le point de replacement
+			bee.fly_towards(_flower_waypoint(flower, target, normal), delta, true, max_speed)
+			return false
+
+	# Dans le cône : update_landing() passe en FINAL à cette image
+	# (approach_dir nul, donc son propre test de cône est toujours vrai)
+	return update_landing(target, normal, HOVER_TIME_FLOWER, delta, max_speed,
+			Vector3.ZERO, bee.get_head_offset())
+
+## true si l'abeille est devant la corolle, à moins de acos(FLOWER_CONE_COS)
+## de sa normale, vue depuis le pistil.
+func _in_flower_cone(target: Vector3, normal: Vector3, dist: float) -> bool:
+	if dist < EXACT_RADIUS:
+		return true
+	return (bee.global_position - target).dot(normal) >= dist * FLOWER_CONE_COS
+
+## Point visé pendant l'approche d'une fleur, recalculé à chaque image selon la
+## position de l'abeille par rapport au plan de la corolle :
+##   - devant : point d'entrée sur l'axe, à FLOWER_GATE_DISTANCE du pistil ;
+##   - derrière, en face du disque : écart latéral à hauteur constante,
+##     jusqu'au-delà du bord (pas de traversée) ;
+##   - derrière, au-delà du bord : remontée vers l'avant en restant hors du disque.
+## Dans les trois cas, le segment abeille → point ne coupe pas la corolle.
+func _flower_waypoint(flower: Flower, target: Vector3, normal: Vector3) -> Vector3:
+	var rel := bee.global_position - target
+	# Hauteur signée au-dessus du plan de la corolle (positive côté ouvert)
+	var h := rel.dot(normal)
+	if h >= FLOWER_FRONT_MARGIN:
+		return target + normal * FLOWER_GATE_DISTANCE
+
+	# Rayon à dégager : bord de la corolle plus une marge
+	var clear := flower.corolla_diameter * 0.5 + FLOWER_RIM_MARGIN
+
+	# Écart latéral à l'axe de la fleur, dans le plan de la corolle
+	var lateral := rel - normal * h
+	var side: Vector3
+	if lateral.length_squared() > 1e-8:
+		side = lateral.normalized()
+	else:
+		# Pile derrière, sur l'axe : on part du côté où pointe l'abeille
+		side = _forward_on(normal)
+		if side.is_zero_approx():
+			side = normal.cross(Vector3.RIGHT)
+		side = side.normalized()
+
+	if lateral.length() < clear:
+		# Encore en face du disque : on s'écarte sans changer de hauteur.
+		# Cible un peu au-delà de clear, pour franchir le seuil malgré le freinage.
+		return target + normal * h + side * (clear + FLOWER_RIM_MARGIN)
+	# Au-delà du bord : on passe devant en restant à l'extérieur du disque
+	return target + side * clear + normal * FLOWER_GATE_DISTANCE
 	
 ## Vecteur haut de l'abeille en vol face à une surface de normale [param normal] :
 ## incliné vers la normale, mais seulement en partie et dans la limite de HOVER_MAX_TILT.

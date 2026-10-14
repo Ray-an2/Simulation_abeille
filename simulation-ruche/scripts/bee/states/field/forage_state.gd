@@ -232,9 +232,8 @@ func _update_hop(delta: float) -> BeeState:
 	if update_takeoff(_target, delta):
 		return null
 
-	# Approche lente, arrêt bref puis pose sur le pistil, comme en GO
-	if update_landing(_target, _flower.get_landing_normal(), HOVER_TIME_FLOWER,
-			delta, bee.simulation.flower_hop_speed, Vector3.ZERO, bee.get_head_offset()):
+	# Approche lente par la face ouverte, arrêt bref puis pose sur le pistil, comme en GO
+	if update_flower_landing(_flower, delta, bee.simulation.flower_hop_speed):
 		_start_harvest()
 	return null
 

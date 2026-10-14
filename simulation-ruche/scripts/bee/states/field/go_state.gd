@@ -58,4 +58,9 @@ func update(delta: float) -> BeeState:
 	if update_landing(_target, flower.get_landing_normal(), HOVER_TIME_FLOWER,
 			delta, 0.0, Vector3.ZERO, bee.get_head_offset()):
 		return bee.forage
+	
+	# Approche par la face ouverte, arrêt bref puis pose sur le pistil
+	if update_flower_landing(flower, delta):
+		return bee.forage
+	
 	return null
