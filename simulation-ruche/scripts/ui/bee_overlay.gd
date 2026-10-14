@@ -557,7 +557,7 @@ func _bee_info(bee: Bee) -> String:
 	var flower := bee.known_flower
 	if is_instance_valid(flower):
 		lines.append("Source : %s (%s)" % [flower.name, flower.get_species_label()])
-		lines.append("Stock source : %.0f" % flower.resource)
+		lines.append("Stock source : %.1f µL" % flower.resource)
 		lines.append("Rentabilité : %.2f" % bee.known_profitability)
 		lines.append("Efficacité énergétique : %.1f" % bee.known_efficiency)
 	else:
@@ -583,10 +583,10 @@ func _flower_card(flower: Flower) -> InfoCard:
 	card.section("Nectar")
 	var max_res := maxf(sim.max_resource, 0.001)
 	# Deux repères sur la jauge : fermeture (seuil) et réouverture
-	card.gauge("Stock", "%.0f / %.0f µL" % [flower.resource, sim.max_resource],
-			flower.resource / max_res, color,
-			[sim.threshold / max_res, sim.reopen_level / max_res])
-	card.note("Fermeture à %.0f µL · réouverture à %.0f µL" % [sim.threshold, sim.reopen_level])
+	card.gauge("Stock", "%.1f / %.1f µL" % [flower.resource, sim.max_resource],
+		flower.resource / max_res, color,
+		[sim.threshold / max_res, sim.reopen_level / max_res])
+	card.note("Fermeture à %.1f µL · réouverture à %.1f µL" % [sim.threshold, sim.reopen_level])
 	card.pair("Teneur en sucre", "%d %%" % roundi(flower.sugar_concentration * 100.0))
 	card.pair("Durée de prélèvement", "× %.2f" % flower.get_viscosity_factor())
 	if flower.state == Flower.State.EMPTY:

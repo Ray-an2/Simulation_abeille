@@ -36,7 +36,7 @@ class_name Simulation extends Node3D
 @export_group("Temps")
 
 ## Durée réelle (s) d'une journée simulée de 24 h.
-@export var day_duration_seconds := 600.0
+@export var day_duration_seconds := 1440
 
 ## Heure de départ de la simulation.
 @export_range(0.0, 24.0) var start_hour := 8.0
@@ -130,7 +130,7 @@ class_name Simulation extends Node3D
 @export var forage_capacity: float = 30.0
 
 ## Durée minimale (s) de butinage sur une fleur.
-@export var foraging_time_min := 4.0
+@export var foraging_time_min := 3.0
 
 ## Durée maximale (s) de butinage sur une fleur.
 @export var foraging_time_max := 5.0
@@ -306,18 +306,18 @@ class_name Simulation extends Node3D
 @export_group("Fleur")
 
 ## Quantité maximale de nectar (µL) dans une fleur.
-@export var max_resource := 100.0
+@export var max_resource := 6
 
 ## Seuil de la fleur.
-@export var threshold := 20.0
+@export var threshold := 1.2
 
 ## Quantité de nectar (µL) prélevée sur une fleur pleine ; proportionnelle au stock sinon.
-@export var harvest_amount := 5.0
+@export var harvest_amount := 3.0
 
 ## Stock auquel une fleur fermée (EMPTY) rouvre. Supérieur au seuil : la fleur
 ## rouvre avec quelques prélèvements d'avance au lieu de clignoter entre
 ## AVAILABLE et EMPTY. Valeur de réglage.
-@export var reopen_level := 40.0
+@export var reopen_level := 2.4
 
 ## Fraction du débit de sécrétion conservée la nuit (0 = arrêt, 1 = comme le jour).
 ## La sécrétion nocturne est nettement plus faible chez la plupart des espèces,

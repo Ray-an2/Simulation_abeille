@@ -295,7 +295,8 @@ func _cargo_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 	rows.append(_row_badge(_species_label(flower.species), flower_color, str(flower.name)))
 	# Repère sur la jauge : seuil sous lequel la fleur passe en EMPTY
 	var max_res := maxf(sim.max_resource, 0.001)
-	rows.append(_row_gauge("Stock de la fleur", "%.0f / %.0f" % [flower.resource, sim.max_resource],
+	# Une décimale : avec des stocks de quelques µL, %.0f n'afficherait que 0 à 6
+	rows.append(_row_gauge("Stock de la fleur", "%.1f / %.1f" % [flower.resource, sim.max_resource],
 			flower.resource / max_res, flower_color, [sim.threshold / max_res]))
 	rows.append(_row_pair("État de la fleur", _flower_state_label(flower)))
 	# Origine de la source : exploration, ou danse (avec la chaîne de recrutement)

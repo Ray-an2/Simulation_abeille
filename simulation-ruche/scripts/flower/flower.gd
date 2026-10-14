@@ -60,15 +60,20 @@ enum Species { LILY, ROSE_BLUE, ROSE_RED, ROSE_GREEN, ROSE_PINK }
 
 ## Constante de temps de la sécrétion (heures simulées) par espèce : en une
 ## constante de temps, la fleur regagne 63 % du nectar qui lui manque, en trois
-## 95 %. Convertie en temps réel par Simulation.hours_from() : elle suit donc
-## la durée de la journée simulée. Valeurs de réglage, reprises des anciens
-## temps de recharge : l'ordre des espèces est conservé.
+## 95 %. Convertie en temps réel par Simulation.hours_from() : avec une journée
+## de 24 min (1 h simulée = 60 s réelles), 1 h de τ vaut 60 s.
+## Calibrées pour des massifs de 20 à 30 fleurs, avec un prélèvement de la moitié
+## du stock par visite. Nombre d'abeilles dans le massif à partir duquel la
+## rentabilité passe sous le seuil de danse (modèle simplifié) :
+## rose verte vers 4-5, lys et rose bleue vers 8-10, rose rose jamais.
+## Si day_duration_seconds change, multiplier ces valeurs par 1440 / nouvelle durée
+## pour garder le même équilibre entre sécrétion et butinage.
 const SECRETION_TAU := {
-	Species.LILY: 4.0,			# moy
-	Species.ROSE_BLUE: 4.0,		# moy
-	Species.ROSE_RED: 2.0,		# rapide
-	Species.ROSE_GREEN: 8.0,	# long
-	Species.ROSE_PINK: 1.0,		# très rapide
+	Species.LILY: 1.7,			# moyenne
+	Species.ROSE_BLUE: 1.7,		# moyenne
+	Species.ROSE_RED: 0.8,		# rapide
+	Species.ROSE_GREEN: 3.3,	# lente : s'épuise vite
+	Species.ROSE_PINK: 0.4,		# très rapide : quasi inépuisable
 }
 
 ## Concentration en sucre du nectar (fraction massique) par espèce.
