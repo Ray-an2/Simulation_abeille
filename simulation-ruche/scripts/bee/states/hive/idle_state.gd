@@ -2,8 +2,13 @@ class_name IdleState extends HiveState
 ## Attente dans la ruche (abeille jaune). État initial.
 ## L'abeille alterne phases de marche sinueuse et pauses sur le cadre,
 ## jusqu'à détecter une danse (→ WATCH), partir explorer (→ SCOUT)
-## ou devenir receveuse (→ RECEIVE)
+## ou devenir receveuse (→ RECEIVE).
 ## Le déplacement lui-même (accélération, évitement, bords) est délégué à bee.walker.
+##
+## Envie d'explorer : elle croît avec le temps passé de jour sans croiser de danse.
+## Une abeille qui trouve des danses les suit ; une abeille qui n'en trouve pas
+## finit par chercher elle-même (Seeley 1983 ; Biesmeijer et Seeley 2005).
+## L'information est locale : l'abeille ne connaît que les danses à sa portée.
 
 # =============================================================================
 # Constantes
@@ -44,6 +49,10 @@ var _phase_time := 0.0
 ## au lieu de tomber tous sur la même.
 var _push_offset := 0
 
+## Temps (s) passé de jour dans cet état sans croiser de danse à portée.
+## Remis à zéro à l'entrée dans l'état et à chaque danse rencontrée.
+var _time_without_dance := 0.0
+
 # =============================================================================
 # Méthodes de l'état
 # =============================================================================
@@ -53,10 +62,16 @@ func enter() -> void:
 	# démarrent en même temps au lancement de la simulation
 	_start_pause(randf_range(0.0, PAUSE_MAX))
 	_push_offset = randi() % PUSH_CHECK_STEP
+	# De retour sur le cadre (trajet, réception, suivi de danse interrompu),
+	# l'abeille cherche d'abord des danses avant d'avoir envie d'explorer
+	_time_without_dance = 0.0
 
 func update(delta: float) -> BeeState:
-		# Danse à portée : l'abeille peut se mettre à la suivre (→ WATCH)
-	var dancer := _find_dancer(delta)
+	# Lumière suffisante pour sortir : testée une seule fois par frame
+	var day := bee.can_leave()
+
+	# Danse à portée : l'abeille peut se mettre à la suivre (→ WATCH)
+	var dancer := _check_dances(delta, day)
 	if dancer != null:
 		return bee.watch.follow(dancer)
 
@@ -65,18 +80,19 @@ func update(delta: float) -> BeeState:
 	if not is_instance_valid(bee.known_flower) and not bee.has_dance_vector() \
 			and randf() < bee.simulation.p_receive * delta:
 		return bee.receive
-	
+
 	# Pas de sortie si la lumière est insuffisante pour cette abeille
-	if bee.can_leave():
+	if day:
 		# Au matin, une abeille qui connaît une source y retourne sans attendre
 		# de danse. p_reactivate est une probabilité par seconde.
 		if is_instance_valid(bee.known_flower) \
 				and randf() < bee.simulation.p_reactivate * delta:
 			return bee.leave_hive.then(bee.go)
 
-		# p_scout est une probabilité par seconde : × delta pour ne pas dépendre du framerate.
+		# Taux d'exploration par seconde : × delta pour ne pas dépendre du framerate.
+		# Il croît avec le temps passé sans croiser de danse (voir get_scout_rate).
 		# L'abeille sort d'abord à pied, puis explore une fois dehors.
-		if randf() < bee.simulation.p_scout * delta:
+		if randf() < get_scout_rate() * delta:
 			return bee.leave_hive.then(bee.scout)
 
 	_update_phase(delta)
@@ -92,13 +108,25 @@ func update(delta: float) -> BeeState:
 	return null
 
 # =============================================================================
+# Lecture (interface)
+# =============================================================================
+
+## Probabilité par seconde de partir explorer, au moment présent.
+## p_scout juste après une danse rencontrée, p_scout_max après scout_patience
+## secondes de jour sans en croiser, interpolation linéaire entre les deux.
+func get_scout_rate() -> float:
+	var sim := bee.simulation
+	var t := clampf(_time_without_dance / maxf(sim.scout_patience, 0.001), 0.0, 1.0)
+	return lerpf(sim.p_scout, sim.p_scout_max, t)
+
+# =============================================================================
 # Utilitaires internes
 # =============================================================================
 
 ## Fait progresser la phase en cours et bascule entre marche et pause à son terme.
 ## Une abeille en pause bousculée par une voisine repart pour s'écarter.
 func _update_phase(delta: float) -> void:
-		# En pause, test de bousculade une frame sur PUSH_CHECK_STEP seulement
+	# En pause, test de bousculade une frame sur PUSH_CHECK_STEP seulement
 	if not _walking and (Engine.get_physics_frames() + _push_offset) % PUSH_CHECK_STEP == 0:
 		# Sans cap fourni : en pause, l'abeille réagit aux voisines de tous les côtés
 		var away := bee.walker.get_avoidance()
@@ -127,21 +155,35 @@ func _start_pause(duration: float) -> void:
 	_walking = false
 	_phase_time = duration
 
-## Renvoie la danseuse la plus proche à portée si l'abeille décide de la suivre,
-## sinon null. Testé une frame sur DANCE_CHECK_STEP, avec le même décalage
-## que la bousculade : les abeilles ne cherchent pas toutes sur la même frame.
-func _find_dancer(delta: float) -> Bee:
+## Met à jour le temps sans danse et renvoie la danseuse la plus proche
+## si l'abeille décide de la suivre, sinon null.
+## [param day] : true si la lumière permet de sortir. La nuit, personne ne danse :
+## le temps sans danse ne compte pas, sinon toutes les abeilles partiraient
+## explorer en même temps au lever du jour.
+## Testé une frame sur DANCE_CHECK_STEP, avec le même décalage que la bousculade :
+## les abeilles ne cherchent pas toutes sur la même frame.
+func _check_dances(delta: float, day: bool) -> Bee:
+	if day:
+		_time_without_dance += delta
 	if (Engine.get_physics_frames() + _push_offset) % DANCE_CHECK_STEP != 0:
 		return null
 	var sim := bee.simulation
-	# Probabilité par seconde, ramenée aux DANCE_CHECK_STEP frames écoulées.
-	# Tirée avant la recherche : la plupart du temps, on évite la requête.
+	# La requête est faite à chaque test (et plus seulement après le tirage
+	# de p_follow) : il faut savoir si une danse est à portée pour remettre
+	# le compteur à zéro. Peu de danses à la fois : le coût reste faible.
+	var nearby := bee.hive.get_dancers_near(bee.global_position, sim.follow_radius)
+	if nearby.is_empty():
+		return null
+	# Une danse à portée : de l'information circule, l'envie d'explorer retombe,
+	# même si l'abeille ne la suit pas (danseuse déjà entourée, tirage raté)
+	_time_without_dance = 0.0
+	# Probabilité par seconde, ramenée aux DANCE_CHECK_STEP frames écoulées
 	if randf() >= sim.p_follow * delta * DANCE_CHECK_STEP:
 		return null
 	# La danse la plus proche : les suiveuses réelles suivent plutôt la plus proche
 	var nearest: Bee = null
 	var best := INF
-	for dancer in bee.hive.get_dancers_near(bee.global_position, sim.follow_radius):
+	for dancer in nearby:
 		# Danseuse déjà entourée : plus de place autour d'elle
 		if bee.hive.get_follower_count(dancer) >= sim.max_followers:
 			continue

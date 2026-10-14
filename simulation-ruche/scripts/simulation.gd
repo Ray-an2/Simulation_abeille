@@ -95,9 +95,22 @@ class_name Simulation extends Node3D
 
 @export_group("Exploration")
 
-## Probabilité par seconde qu'une abeille en IDLE parte explorer.
+## Probabilité par seconde qu'une abeille en IDLE parte explorer juste après
+## avoir croisé une danse : l'information circule, elle a peu de raisons de chercher.
 ## À multiplier par delta dans IdleState, pour ne pas dépendre de la fréquence d'images.
 @export var p_scout: float = 0.001
+
+## Probabilité par seconde de partir explorer pour une abeille qui n'a croisé
+## aucune danse depuis scout_patience secondes de jour.
+## Rapport p_scout_max / p_scout ≈ 6 : transposé de l'écart de proportion
+## d'éclaireuses parmi les butineuses observé par Seeley (1983), d'environ 5 %
+## quand les sources abondent à environ 35 % quand elles manquent.
+## Transposition approximative : une proportion n'est pas un taux.
+@export var p_scout_max: float = 0.006
+
+## Temps (s) passé de jour en IDLE sans croiser de danse au bout duquel
+## l'envie d'explorer atteint p_scout_max. Valeur de réglage, non mesurée.
+@export var scout_patience: float = 300.0
 
 ## Rayon (unités) de la zone explorée autour de la ruche en SCOUT.
 @export var scout_radius: float = 70.0

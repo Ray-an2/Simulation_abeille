@@ -178,9 +178,9 @@ func _state_rows(bee: Bee, state: StringName, in_state: float) -> Array[Dictiona
 	var sim := bee.simulation
 	match state:
 		&"IdleState":
-			# p_scout est une probabilité par seconde : attente moyenne 1 / p_scout
-			rows.append(_row_text("Part explorer au bout de %.0f s en moyenne"
-					% (1.0 / maxf(sim.p_scout, 0.0001))))
+			# Taux d'exploration actuel de cette abeille : attente moyenne 1 / taux
+			rows.append(_row_text("Part explorer au bout de %.0f s en moyenne (rythme actuel)"
+					% (1.0 / maxf(bee.idle.get_scout_rate(), 0.0001))))
 		&"ScoutState":
 			# Le minuteur de SCOUT repart à chaque entrée dans l'état, comme in_state
 			var left := maxf(sim.scout_timeout - in_state, 0.0)
