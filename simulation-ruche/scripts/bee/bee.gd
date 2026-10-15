@@ -215,6 +215,13 @@ var sugar: float = 0.0
 ## Alourdit l'abeille : le vol de retour et les vols entre fleurs coûtent plus cher.
 var load_mass: float = 0.0
 
+## Espèce (Flower.Species) du nectar transporté dans le jabot, -1 si le jabot est vide.
+## Fixée en FORAGE à chaque prélèvement : la constance florale garantit une seule
+## espèce par trajet. Vidée en UNLOAD, après avoir été transmise à la receveuse
+## avec le nectar. Sert au bilan des réserves par espèce (Hive.deposit) ;
+## n'intervient pas dans l'évaluation de la source.
+var crop_species: int = -1
+
 ## true si la nuit a écourté le butinage de ce trajet : UNLOAD ne réévalue
 ## pas la source sur un jabot incomplet. Remis à false en UNLOAD.
 var trip_cut_short: bool = false

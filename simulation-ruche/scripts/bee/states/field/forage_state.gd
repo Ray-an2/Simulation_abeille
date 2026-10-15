@@ -142,6 +142,10 @@ func update(delta: float) -> BeeState:
 		# L'abeille goûte le nectar : elle cumule le sucre et la masse transportés
 		bee.sugar += Flower.sugar_in(drunk, c)
 		bee.load_mass += Flower.nectar_mass(drunk, c)
+		# Origine du nectar bu, pour le bilan des réserves par espèce.
+		# _species est fixée à l'entrée de l'état (constance florale) : toutes
+		# les fleurs de ce trajet sont de la même espèce.
+		bee.crop_species = _species
 		bee.update_pollen()
 		# Jabot plein : retour à la ruche
 		if bee.nectar >= capacity:

@@ -645,15 +645,17 @@ func _species_label(species: Flower.Species) -> String:
 			return "Rose bleue"
 		Flower.Species.ROSE_RED:
 			return "Rose rouge"
+		Flower.Species.ROSE_GREEN:
+			return "Rose verte"
+		Flower.Species.ROSE_PINK:
+			return "Rose rose"
 	return "?"
 
 
+## État de la fleur en français : Disponible, Occupée, ou Fermée, en sécrétion.
+## Lu dans Flower.STATE_LABELS (via get_state_label), comme les fiches de BeeOverlay :
+## un seul endroit à modifier si un libellé change.
+## EMPTY n'est plus « vide, en recharge » : la fleur sécrète en continu et rouvre
+## dès que son stock atteint reopen_level (voir Flower._process).
 func _flower_state_label(flower: Flower) -> String:
-	match flower.state:
-		Flower.State.AVAILABLE:
-			return "Disponible"
-		Flower.State.BUSY:
-			return "Occupée"
-		Flower.State.EMPTY:
-			return "Vide, en recharge"
-	return "?"
+	return flower.get_state_label()

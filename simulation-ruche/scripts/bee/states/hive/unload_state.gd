@@ -30,6 +30,10 @@ class_name UnloadState extends HiveState
 ## L'abeille n'utilise que ce qu'elle a mesuré elle-même : jamais le stock d'une fleur.
 ## L'épuisement d'une source lui parvient par un jabot moins rempli et un butinage
 ## plus long ; la distance, la concentration et la viscosité par le gain et le coût.
+##
+## Bilan par espèce : l'espèce du nectar (bee.crop_species) passe à la receveuse avec
+## le nectar, pour le bilan des réserves de la ruche (Hive.deposit). Donnée
+## d'observation : elle n'intervient pas dans l'évaluation de la source.
 
 # =============================================================================
 # Constantes
@@ -161,14 +165,17 @@ func update(delta: float) -> BeeState:
 	var sugar := bee.sugar
 	var load := bee.load_mass
 
-	# Le nectar passe à la receveuse, qui le stockera en cellule
+	# Le nectar passe à la receveuse, qui le stockera en cellule.
+	# Son espèce l'accompagne, pour le bilan des réserves par espèce
 	if bee.nectar > 0.0:
-		_hand_over(bee.nectar, sugar)
+		_hand_over(bee.nectar, sugar, bee.crop_species)
 		bee.nectar = 0.0
 		# Nectar déchargé : les pelotes disparaissent
 		bee.update_pollen()
 	bee.sugar = 0.0
 	bee.load_mass = 0.0
+	# Jabot vide : plus d'espèce associée
+	bee.crop_species = -1
 	# Transfert terminé : exit() ne doit pas annuler quoi que ce soit
 	_receiver = null
 
@@ -274,13 +281,15 @@ func _update_approach(delta: float) -> void:
 		_phase = Phase.TRANSFER
 		bee.play_animation(&"_bee_idle")
 
-## Remet [param nectar] µL contenant [param sugar] mg de sucre à la receveuse.
+## Remet [param nectar] µL contenant [param sugar] mg de sucre, issus de l'espèce
+## [param species] (Flower.Species, -1 si inconnue), à la receveuse.
 ## Si elle n'est plus là (garde-fou), le nectar est déposé directement pour ne pas
-## fausser le bilan de la colonie.
-func _hand_over(nectar: float, sugar: float) -> void:
-	if _is_receiving(_receiver) and _receiver.receive.take_load(bee, nectar, sugar):
+## fausser le bilan de la colonie, avec son espèce pour ne pas fausser non plus
+## le bilan par espèce.
+func _hand_over(nectar: float, sugar: float, species: int) -> void:
+	if _is_receiving(_receiver) and _receiver.receive.take_load(bee, nectar, sugar, species):
 		return
-	bee.hive.deposit(nectar, sugar)
+	bee.hive.deposit(nectar, sugar, species)
 
 ## true si [param receiver] existe encore et est toujours dans l'état RECEIVE.
 func _is_receiving(receiver: Bee) -> bool:
@@ -342,6 +351,8 @@ func _evaluate_source(sugar: float, load: float) -> int:
 ## log(1 + e) : nul en 0, puis compare les sources par rapports plutôt que par
 ## différences (choix de modélisation). Avec efficiency_max = 60 :
 ## 0,2 (abandon) vers e ≈ 1,3 ; 0,6 (danse) vers e ≈ 11.
+## StatsCollector._to_profitability en est une copie (prévision du panneau F1) :
+## à modifier en même temps.
 func _efficiency_to_profitability(efficiency: float) -> float:
 	if efficiency <= 0.0:
 		return 0.0

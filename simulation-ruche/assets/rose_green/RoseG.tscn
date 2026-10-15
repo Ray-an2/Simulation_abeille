@@ -2,9 +2,11 @@
 
 [ext_resource type="Script" uid="uid://c0rn8tqubfrxl" path="res://scripts/flower/flower.gd" id="1_08bim"]
 [ext_resource type="PackedScene" uid="uid://bwpal4jjo5u25" path="res://assets/rose_green/scene.gltf" id="2_2cl2u"]
+[ext_resource type="Material" uid="uid://cgaqmwwddknbe" path="res://assets/rose_green/pollen_rose_green.tres" id="2_m2e5f"]
 
 [node name="RoseG" type="Node3D" unique_id=1419264972]
 script = ExtResource("1_08bim")
+pollen_material = ExtResource("2_m2e5f")
 
 [node name="Model" parent="." unique_id=402684470 instance=ExtResource("2_2cl2u")]
 transform = Transform3D(0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02, 0.0241853, 0, -1.015418)

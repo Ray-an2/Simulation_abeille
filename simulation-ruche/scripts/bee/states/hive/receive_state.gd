@@ -31,6 +31,10 @@ class_name ReceiveState extends HiveState
 ## Simplification : la receveuse ne cherche pas les butineuses, ce sont elles qui la
 ## trouvent en la croisant (UnloadState). En réalité, les deux vont à la rencontre
 ## l'une de l'autre dans la zone de déchargement.
+##
+## Bilan par espèce : la receveuse garde l'espèce du nectar reçu (_load_species)
+## jusqu'au dépôt en cellule, pour que la ruche connaisse la composition de ses
+## réserves (Hive.deposit). Donnée d'observation : aucune abeille ne la lit.
 
 # =============================================================================
 # Constantes
@@ -137,6 +141,13 @@ var _fan_left := 0.0
 var _load_nectar := 0.0
 var _load_sugar := 0.0
 
+## Espèce (Flower.Species) du nectar porté, -1 sans chargement.
+## Transmise par la butineuse (take_load), elle accompagne le nectar jusqu'à
+## la cellule : la ruche tient ainsi le bilan de ses réserves par espèce.
+## Un seul chargement à la fois (take_load fait passer en TO_STORE) : pas de
+## mélange d'espèces à gérer.
+var _load_species := -1
+
 ## Nombre de chargements stockés depuis l'entrée dans l'état (interface).
 var _loads_stored := 0
 
@@ -149,6 +160,8 @@ func enter() -> void:
 	_forager = null
 	_load_nectar = 0.0
 	_load_sugar = 0.0
+	# Aucun nectar porté : espèce inconnue
+	_load_species = -1
 	_loads_stored = 0
 	_idle_time = 0.0
 	_fan_left = 0.0
@@ -168,11 +181,13 @@ func start_at_launch() -> void:
 
 func exit() -> void:
 	bee.hive.unregister_receiver(bee)
-	# Interrompue avec du nectar (ne devrait pas arriver) : déposé sur place, pas perdu
+	# Interrompue avec du nectar (ne devrait pas arriver) : déposé sur place, pas perdu.
+	# L'espèce suit le nectar : le bilan par espèce reste juste
 	if _load_nectar > 0.0:
-		bee.hive.deposit(_load_nectar, _load_sugar)
+		bee.hive.deposit(_load_nectar, _load_sugar, _load_species)
 		_load_nectar = 0.0
 		_load_sugar = 0.0
+		_load_species = -1
 	_forager = null
 
 func update(delta: float) -> BeeState:
@@ -231,10 +246,12 @@ func update(delta: float) -> BeeState:
 		Phase.STORE:
 			_store_left -= delta
 			if _store_left <= 0.0:
-				# Le nectar n'entre dans les réserves qu'une fois en cellule
-				bee.hive.deposit(_load_nectar, _load_sugar)
+				# Le nectar n'entre dans les réserves qu'une fois en cellule,
+				# avec son espèce pour le bilan par espèce (StatsPanel)
+				bee.hive.deposit(_load_nectar, _load_sugar, _load_species)
 				_load_nectar = 0.0
 				_load_sugar = 0.0
+				_load_species = -1
 				_loads_stored += 1
 				_idle_time = 0.0
 				# Repart de l'arrêt, dans la direction où elle se trouve
@@ -257,14 +274,17 @@ func start_transfer(forager: Bee) -> void:
 	bee.play_animation(&"_bee_idle")
 
 ## Fin du transfert : la receveuse prend [param nectar] µL contenant [param sugar] mg
-## de sucre et part les stocker. Renvoie false si elle n'est pas en transfert avec
+## de sucre, issus de l'espèce [param species] (Flower.Species, -1 si inconnue),
+## et part les stocker. Renvoie false si elle n'est pas en transfert avec
 ## [param forager] (garde-fou déclenché entre-temps) : la butineuse dépose alors
 ## elle-même le nectar pour qu'il ne soit pas perdu.
-func take_load(forager: Bee, nectar: float, sugar: float) -> bool:
+func take_load(forager: Bee, nectar: float, sugar: float, species: int = -1) -> bool:
 	if _phase != Phase.TRANSFER or forager != _forager:
 		return false
 	_load_nectar += nectar
 	_load_sugar += sugar
+	# Origine du chargement, déposée avec lui en cellule
+	_load_species = species
 	_forager = null
 	_phase = Phase.TO_STORE
 	_target = bee.hive.get_storage_point()
@@ -302,6 +322,10 @@ func get_load_nectar() -> float:
 ## Sucre (mg) porté vers les cellules : non nul entre take_load() et le dépôt.
 func get_load_sugar() -> float:
 	return _load_sugar
+
+## Espèce (Flower.Species) du nectar porté vers les cellules, -1 sans chargement.
+func get_load_species() -> int:
+	return _load_species
 
 ## Chargements stockés depuis l'entrée dans l'état.
 func get_loads_stored() -> int:

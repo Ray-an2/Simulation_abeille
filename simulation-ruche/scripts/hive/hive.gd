@@ -193,6 +193,15 @@ var nectar_stock: float = 0.0
 ## Masse de sucre (mg) stockée : l'énergie réellement récoltée par la colonie
 var sugar_stock := 0.0
 
+## Nectar (µL) stocké par espèce : Flower.Species → µL, -1 pour une origine inconnue
+## (ne devrait pas arriver). Bilan de la récolte, lu par l'interface (StatsPanel) ;
+## aucune abeille ne le lit. Dictionnaire non typé, comme get_dances_by_species() :
+## les clés sont les valeurs entières de l'enum.
+var nectar_by_species: Dictionary = {}
+
+## Sucre (mg) stocké par espèce, mêmes clés : l'énergie rapportée par chaque source.
+var sugar_by_species: Dictionary = {}
+
 ## Abeilles dans l'état RECEIVE. Tenu à jour par ReceiveState (enter / exit).
 var _receivers: Array[Bee] = []
 
@@ -611,10 +620,16 @@ func get_dancers_near(pos: Vector3, radius: float) -> Array[Bee]:
 # s'allonge quand les receveuses libres se raréfient (Seeley et Tovey 1994).
 
 ## Ajoute [param amount] µL de nectar contenant [param sugar] mg de sucre au stock
-## de la ruche. Appelé par la receveuse quand elle dépose sa charge en cellule.
-func deposit(amount: float, sugar: float = 0.0) -> void:
+## de la ruche. Appelé par la receveuse quand elle dépose sa charge en cellule,
+## ou par la butineuse si la receveuse a disparu (UnloadState._hand_over).
+## [param species] : espèce d'origine du nectar (Flower.Species), -1 si inconnue.
+## Elle ne sert qu'au bilan par espèce.
+func deposit(amount: float, sugar: float = 0.0, species: int = -1) -> void:
 	nectar_stock += amount
 	sugar_stock += sugar
+	# Bilan par espèce : le total reste dans nectar_stock et sugar_stock
+	nectar_by_species[species] = nectar_by_species.get(species, 0.0) + amount
+	sugar_by_species[species] = sugar_by_species.get(species, 0.0) + sugar
 
 ## Point tiré au hasard dans la zone de déchargement : bas du cadre, à l'aplomb de l'entrée.
 func get_unloading_point() -> Vector3:
