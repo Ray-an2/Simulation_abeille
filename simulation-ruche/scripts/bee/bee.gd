@@ -410,7 +410,7 @@ func _process(delta: float) -> void:
 	_anim_accum += delta
 	var step := 1
 	# Caméra relevée une seule fois par frame pour toute la colonie
-	var cam := simulation.get_render_camera()
+	var cam := _get_render_camera()
 	if cam != null:
 		if not cam.is_position_in_frustum(global_position):
 			step = ANIM_HIDDEN_STEP
@@ -424,6 +424,20 @@ func _process(delta: float) -> void:
 		return
 	_anim.advance(_anim_accum)
 	_anim_accum = 0.0
+
+## Caméra réellement utilisée pour le rendu, relevée une seule fois par frame
+## pour toutes les abeilles (variables statiques, partagées par la classe).
+static var _render_camera: Camera3D = null
+static var _render_camera_frame := -1
+
+## Caméra de rendu de la frame en cours. La première abeille qui la demande
+## l'interroge, les suivantes reprennent la valeur mise en cache.
+func _get_render_camera() -> Camera3D:
+	var frame := Engine.get_process_frames()
+	if frame != _render_camera_frame or not is_instance_valid(_render_camera):
+		_render_camera_frame = frame
+		_render_camera = get_viewport().get_camera_3d()
+	return _render_camera
 
 ## Exécute l'état courant et applique la transition qu'il renvoie, le cas échéant.
 ## Les transitions imposées par le super-état (interrupt) passent avant celles de l'état.
@@ -819,7 +833,7 @@ func update_pollen() -> void:
 # --- Vol ---
 
 ## Point à viser à cette frame pour aller vers [param target] sans traverser
-## d'obstacle ni le sol.
+## d'obstacle ni le sol.*
 func _flight_goal(target: Vector3) -> Vector3:
 	var to_target := target - global_position
 	var dist := to_target.length()

@@ -10,10 +10,10 @@ class_name Hive extends Node3D
 ## Nombre de tirages avant d'accepter une position qui ne respecte pas l'espacement.
 const SPAWN_MAX_ATTEMPTS := 5
 
-## Taille (m) d'une cellule de la grille d'évitement. Doit être supérieure ou égale
-## au plus grand rayon passé à get_comb_bees_near() (CombWalker.AVOID_RADIUS) :
-## toute voisine à portée est alors forcément dans l'une des 27 cellules autour de l'abeille.
-const GRID_CELL := 0.015
+## Taille (m) d'une cellule de la grille d'évitement : au moins le DOUBLE du plus grand
+## rayon passé à get_comb_bees_near() (CombWalker.AVOID_RADIUS). Ainsi, sur chaque axe,
+## le voisinage ne déborde que d'un côté de la cellule : 8 cellules à parcourir au lieu de 27.
+const GRID_CELL := 0.03
 
 ## Volume (dB) du bourdonnement quand la ruche est vide : -80 dB est inaudible.
 const SILENT_DB := -80.0
@@ -148,6 +148,18 @@ const OPEN_CUTOFF_HZ := 20000.0
 ## Calculé une seule fois dans _ready() par _compute_comb_extent().
 var _comb_center_local := Vector3.ZERO
 
+## Repère de SpawnMarker tel quel (échelle comprise) et son inverse. C'est le repère
+## dans lequel _compute_comb_extent() exprime _comb_center_local et spawn_extent :
+## toutes les conversions de points du cadre doivent passer par lui.
+## Remplis par _cache_comb_frame(), en tête de _ready().
+var _spawn_global := Transform3D.IDENTITY
+var _spawn_global_inv := Transform3D.IDENTITY
+
+## Même repère sans échelle (axes unitaires) et son inverse : sert à la normale
+## du cadre, aux directions dans son plan et à get_spawn_transform().
+var _spawn_frame := Transform3D.IDENTITY
+var _spawn_frame_inv := Transform3D.IDENTITY
+
 ## Positions d'apparition déjà attribuées, dans le plan local X/Z de SpawnMarker,
 ## pour respecter spawn_min_spacing.
 var _used_spawn_positions: Array[Vector2] = []
@@ -171,6 +183,9 @@ var _grid: Dictionary = {}
 ## Frame physique de la dernière reconstruction de la grille, pour ne la faire
 ## qu'une fois par frame.
 var _grid_frame := -1
+
+## Tableau réutilisé par get_comb_bees_near() : évite une allocation par appel.
+var _near_buffer: Array[Bee] = []
 
 # --- Danses ---
 
@@ -233,10 +248,29 @@ var _lowpass: AudioEffectLowPassFilter
 # =============================================================================
 
 func _ready() -> void:
+	# Repères du cadre EN PREMIER : toutes les fonctions de géométrie s'en servent
+	_cache_comb_frame()
+	# Recalcul automatique si la ruche est déplacée en cours d'exécution
+	# (inspecteur distant, script de placement)
+	set_notify_transform(true)
 	_compute_comb_extent()
 	# Point de départ du lissage : le volume réglé dans l'inspecteur (-80 conseillé)
 	_buzz_base_db = _buzz.volume_db
 	_lowpass = _setup_lowpass()
+
+## Recalcule les repères du cadre quand la ruche bouge.
+func _notification(what: int) -> void:
+	# _spawn est null tant que les @onready ne sont pas résolues
+	if what == NOTIFICATION_TRANSFORM_CHANGED and _spawn != null:
+		_cache_comb_frame()
+
+## Fige les repères de SpawnMarker : évite un orthonormalized() et un affine_inverse()
+## à chaque appel (plus de 800 par frame).
+func _cache_comb_frame() -> void:
+	_spawn_global = _spawn.global_transform
+	_spawn_global_inv = _spawn_global.affine_inverse()
+	_spawn_frame = Transform3D(_spawn_global.basis.orthonormalized(), _spawn_global.origin)
+	_spawn_frame_inv = _spawn_frame.affine_inverse()
 
 func _process(delta: float) -> void:
 	# Parois d'abord : _update_buzz_volume() utilise _outside
@@ -350,7 +384,7 @@ func is_inside(point: Vector3) -> bool:
 	if absf(lateral) > floor_half_width:
 		return false
 	# Position dans le plan du cadre, par rapport au centre de la zone de déambulation
-	var local := get_spawn_transform().affine_inverse() * point - _comb_center_local
+	var local := _spawn_frame_inv * point - _comb_center_local
 	# spawn_extent est déjà réduit de comb_margin : on la rajoute pour retrouver la cire entière
 	var half := spawn_extent + Vector2.ONE * (comb_margin + inside_margin)
 	return absf(local.x) <= half.x and absf(local.z) <= half.y
@@ -361,23 +395,24 @@ func is_inside(point: Vector3) -> bool:
 
 ## Repère du cadre, en coordonnées globales : origine au centre de la zone d'attente,
 ## plan X/Z = surface où marchent les abeilles, axe Y = normale du cadre.
-## orthonormalized() retire une éventuelle échelle du marqueur pour ne garder que la rotation.
+## Sans l'éventuelle échelle du marqueur : seule la rotation est gardée.
+## Mis en cache par _cache_comb_frame().
 func get_spawn_transform() -> Transform3D:
-	return Transform3D(_spawn.global_basis.orthonormalized(), _spawn.global_position)
+	return _spawn_frame
 
 ## Normale du cadre : sert de vecteur « haut » aux abeilles qui marchent dessus.
 func get_comb_normal() -> Vector3:
-	return _spawn.global_basis.orthonormalized().y
+	return _spawn_frame.basis.y
 
 ## Centre de la zone de déambulation, en coordonnées globales.
 ## Sert de point de repli aux abeilles qui arrivent au bord du cadre.
 func get_comb_center() -> Vector3:
-	return _spawn.global_transform * _comb_center_local
+	return _spawn_global * _comb_center_local
 
 ## Point tiré au hasard dans la zone de déambulation du cadre.
 ## Contrairement à get_random_spawn_transform(), ne réserve pas la position.
 func get_random_comb_point() -> Vector3:
-	return _spawn.global_transform * Vector3(
+	return _spawn_global * Vector3(
 		_comb_center_local.x + randf_range(-spawn_extent.x, spawn_extent.x),
 		0.0,   # à la surface du cadre
 		_comb_center_local.z + randf_range(-spawn_extent.y, spawn_extent.y)
@@ -386,7 +421,7 @@ func get_random_comb_point() -> Vector3:
 ## Point du cadre à au plus [param radius] de [param from], borné au rectangle
 ## et ramené dans le plan de SpawnMarker.
 func get_comb_point_near(from: Vector3, radius: float) -> Vector3:
-	var b := _spawn.global_basis.orthonormalized()
+	var b := _spawn_frame.basis
 	# Décalage aléatoire dans le plan du cadre (axes X et Z du marqueur)
 	var offset := b.x * randf_range(-radius, radius) + b.z * randf_range(-radius, radius)
 	return clamp_to_comb(from + offset)
@@ -394,26 +429,26 @@ func get_comb_point_near(from: Vector3, radius: float) -> Vector3:
 ## Point du bord inférieur de la zone de déambulation le plus proche de [param pos].
 ## Sert de cible aux abeilles qui descendent le cadre pour sortir.
 func get_comb_bottom_point(pos: Vector3) -> Vector3:
-	var local := _spawn.global_transform.affine_inverse() * clamp_to_comb(pos)
+	var local := _spawn_global_inv * clamp_to_comb(pos)
 	# Bas du cadre = côté -Z de SpawnMarker
 	local.z = _comb_center_local.z - spawn_extent.y
-	return _spawn.global_transform * local
+	return _spawn_global * local
 
 ## Distance (m) entre [param pos] et le bord inférieur de la zone de déambulation,
 ## mesurée dans le plan du cadre (0 = sur le bord, positive au-dessus).
 ## Suppose que l'axe Z de SpawnMarker monte le long du cadre (bas = côté -Z).
 func get_comb_bottom_distance(pos: Vector3) -> float:
-	var local := _spawn.global_transform.affine_inverse() * pos
+	var local := _spawn_global_inv * pos
 	return local.z - (_comb_center_local.z - spawn_extent.y)
 
 ## Ramène [param point] dans le rectangle du cadre et dans son plan.
 ## Renvoie le point inchangé s'il y est déjà.
 func clamp_to_comb(point: Vector3) -> Vector3:
-	var local := _spawn.global_transform.affine_inverse() * point
+	var local := _spawn_global_inv * point
 	local.x = clampf(local.x, _comb_center_local.x - spawn_extent.x, _comb_center_local.x + spawn_extent.x)
 	local.z = clampf(local.z, _comb_center_local.z - spawn_extent.y, _comb_center_local.z + spawn_extent.y)
 	local.y = 0.0   # collé à la surface du cadre (hauteur de SpawnMarker)
-	return _spawn.global_transform * local
+	return _spawn_global * local
 
 ## Calcule [member spawn_extent] et [member _comb_center_local] à partir de la géométrie
 ## du cadre, exprimée dans le repère de SpawnMarker (plan X/Z, normale Y).
@@ -518,23 +553,35 @@ func bee_left(bee: Bee) -> void:
 # =============================================================================
 
 ## Abeilles de la ruche à moins de [param radius] de [param pos], sans [param exclude].
-## Ne parcourt que les 27 cellules voisines au lieu de toute la colonie.
+## Ne parcourt que les 8 cellules qui peuvent contenir une voisine à portée.
+## ATTENTION : renvoie un tableau partagé, écrasé au prochain appel. L'appelant doit
+## le parcourir aussitôt, sans le garder (seul appelant : CombWalker.get_avoidance).
 func get_comb_bees_near(pos: Vector3, radius: float, exclude: Bee = null) -> Array[Bee]:
-	assert(radius <= GRID_CELL, "Hive : rayon de recherche supérieur à GRID_CELL")
+	assert(radius * 2.0 <= GRID_CELL + 0.000001,
+		"Hive : rayon de recherche supérieur à GRID_CELL / 2")
 	_update_grid()
-	var result: Array[Bee] = []
+	_near_buffer.clear()
 	var r2 := radius * radius
-	var center := _cell_of(pos)
-	for x in range(-1, 2):
-		for y in range(-1, 2):
-			for z in range(-1, 2):
-				var cell = _grid.get(center + Vector3i(x, y, z))
-				if cell == null:
-					continue
-				for other: Bee in cell:
-					if other != exclude and other.global_position.distance_squared_to(pos) < r2:
-						result.append(other)
-	return result
+	var g := pos / GRID_CELL
+	var base := Vector3i(g.floor())
+	# Position dans la cellule (0 à 1) : on regarde la cellule voisine du côté le plus proche
+	var f := g - Vector3(base)
+	var sx := 1 if f.x >= 0.5 else -1
+	var sy := 1 if f.y >= 0.5 else -1
+	var sz := 1 if f.z >= 0.5 else -1
+	for i in 8:
+		# Les trois bits de i choisissent, sur chaque axe, la cellule de base ou sa voisine
+		var key := base + Vector3i(
+			sx if i & 1 else 0,
+			sy if i & 2 else 0,
+			sz if i & 4 else 0)
+		var cell = _grid.get(key)
+		if cell == null:
+			continue
+		for other: Bee in cell:
+			if other != exclude and other.global_position.distance_squared_to(pos) < r2:
+				_near_buffer.append(other)
+	return _near_buffer
 
 ## Cellule de la grille contenant [param pos].
 func _cell_of(pos: Vector3) -> Vector3i:
@@ -633,12 +680,11 @@ func deposit(amount: float, sugar: float = 0.0, species: int = -1) -> void:
 
 ## Point tiré au hasard dans la zone de déchargement : bas du cadre, à l'aplomb de l'entrée.
 func get_unloading_point() -> Vector3:
-	var to_local := _spawn.global_transform.affine_inverse()
-	var local := to_local * clamp_to_comb(get_entrance_position())
+	var local := _spawn_global_inv * clamp_to_comb(get_entrance_position())
 	local.x += randf_range(-unloading_half_width, unloading_half_width)
 	# Bas du cadre = côté -Z de SpawnMarker (voir get_comb_bottom_point)
 	local.z = _comb_center_local.z - spawn_extent.y + randf() * unloading_height
-	return clamp_to_comb(_spawn.global_transform * local)
+	return clamp_to_comb(_spawn_global * local)
 
 ## Point tiré au hasard dans la zone de stockage : bande du haut du cadre.
 func get_storage_point() -> Vector3:
@@ -646,7 +692,7 @@ func get_storage_point() -> Vector3:
 		_comb_center_local.x + randf_range(-spawn_extent.x, spawn_extent.x),
 		0.0,   # à la surface du cadre
 		_comb_center_local.z + spawn_extent.y - randf() * storage_height)
-	return clamp_to_comb(_spawn.global_transform * local)
+	return clamp_to_comb(_spawn_global * local)
 
 ## Inscrit [param bee] parmi les receveuses (entrée dans RECEIVE).
 func register_receiver(bee: Bee) -> void:

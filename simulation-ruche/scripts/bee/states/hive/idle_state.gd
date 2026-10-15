@@ -75,17 +75,23 @@ func update(delta: float) -> BeeState:
 	if dancer != null:
 		return bee.watch.follow(dancer)
 
-		# Engagement comme receveuse, réservé aux abeilles qui ne butinent pas :
+	# Engagement comme receveuse, réservé aux abeilles qui ne butinent pas :
 	# ni source connue, ni vecteur de danse. Probabilité par seconde, comme p_scout :
 	# p_receive en temps normal, tremble_recruit_rate au contact d'une trémulante
 	# (Seeley et al. 1996 : la danse trémulante fait monter la part de receveuses).
-	if not is_instance_valid(bee.known_flower) and not bee.has_dance_vector():
+	# Testé une frame sur DANCE_CHECK_STEP, comme les danses : la probabilité
+	# est multipliée d'autant pour garder le même taux par seconde.
+	if not is_instance_valid(bee.known_flower) and not bee.has_dance_vector() \
+			and (Engine.get_physics_frames() + _push_offset) % DANCE_CHECK_STEP == 0:
 		var sim := bee.simulation
-		var trembler := _find_trembler()
+		# Aucune trémulante dans la ruche : inutile de chercher
+		var trembler: Bee = null
+		if bee.hive.get_tremble_count() > 0:
+			trembler = _find_trembler()
 		var rate := sim.p_receive
 		if trembler != null:
 			rate = maxf(sim.tremble_recruit_rate, sim.p_receive)
-		if randf() < rate * delta:
+		if randf() < rate * delta * DANCE_CHECK_STEP:
 			# Crédit pour l'interface seulement : la trémulante n'en tient pas compte
 			if trembler != null:
 				trembler.tremble.credit_recruit()

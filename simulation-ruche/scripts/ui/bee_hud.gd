@@ -322,11 +322,14 @@ func _cargo_rows(bee: Bee, rec: BeeTracker.Record) -> Array[Dictionary]:
 
 
 ## Bas droit : comment la source serait dansée, et ce que l'abeille va décider.
-## Panneau masqué sans source connue.
+## Recrue sans fleur trouvée : boussole du vecteur appris dans la danse.
+## Panneau masqué sans source connue ni vecteur de danse.
 func _dance_rows(bee: Bee) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
 	var flower: Flower = bee.known_flower if is_instance_valid(bee.known_flower) else null
 	if flower == null:
+		if bee.has_dance_vector():
+			return _learned_dance_rows(bee)
 		return rows
 	var sim := bee.simulation
 
@@ -361,6 +364,38 @@ func _dance_rows(bee: Bee) -> Array[Dictionary]:
 			else ("Repartira sans danser" if p >= low else "Abandonnera la source")
 	rows.append(_row_text(verdict, color))
 	return rows
+
+## Recrue : boussole du point estimé lu dans la danse. Ce point porte déjà l'erreur
+## de lecture (dance_target) : la boussole montre ce que la recrue a retenu, pas la
+## position exacte de la fleur, qu'elle ne connaît pas encore.
+func _learned_dance_rows(bee: Bee) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	var sim := bee.simulation
+	var hive_pos := bee.hive.global_position
+	# Angle recalculé à chaque image, comme pour une source connue : le soleil tourne
+	var angle := sim.get_dance_angle(bee.dance_target, hive_pos)
+	var dist := sim.get_flat_distance(hive_pos, bee.dance_target)
+	var dist_ratio := clampf(dist / maxf(sim.max_source_distance, 0.001), 0.0, 1.0)
+	rows.append(_row_text("Danse apprise (erreur de lecture comprise)"))
+	rows.append({"kind": &"compass", "angle": angle,
+			"color": _species_color(bee.simulation, bee.dance_species),
+			"distance": dist, "distance_ratio": dist_ratio})
+	var deg := rad_to_deg(angle)
+	var angle_text := "face au soleil" if absf(deg) < 0.5 \
+			else "%.0f° à %s" % [absf(deg), "gauche" if deg > 0.0 else "droite"]
+	rows.append(_row_pair("Angle au soleil", angle_text))
+	rows.append(_row_pair("Distance", "%.1f m" % dist))
+	rows.append(_row_pair("Odeur rapportée", _species_label(bee.dance_species)))
+	return rows
+
+
+## Couleur de pollen de [param species], relevée sur la première fleur de cette espèce ;
+## couleur du nectar à défaut. Parcourt au plus les fleurs de la scène (une trentaine).
+func _species_color(sim: Simulation, species: int) -> Color:
+	for f in sim.flowers:
+		if f.species == species:
+			return _flower_color(f)
+	return NECTAR_COLOR
 
 # =============================================================================
 # Indicateurs de cible dans la vue

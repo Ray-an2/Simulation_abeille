@@ -114,7 +114,7 @@ func _walk_straight(target: Vector3, speed: float, delta: float) -> void:
 	# Direction de marche dans le plan horizontal, pour savoir qui est « devant »
 	var forward := (target - bee.global_position).slide(Vector3.UP)
 	if not forward.is_zero_approx():
-		var urgency := minf(bee.walker.get_avoidance(forward.normalized()).length(), 1.0)
+		var urgency := minf(bee.walker.get_avoidance_cached(forward.normalized()).length(), 1.0)
 		brake = 1.0 - CombWalker.AVOID_BRAKE * urgency
 	bee.walk_towards(target, delta, Vector3.UP, speed * brake)
 

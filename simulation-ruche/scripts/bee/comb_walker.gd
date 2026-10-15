@@ -192,6 +192,17 @@ func get_avoidance(forward: Vector3 = Vector3.ZERO) -> Vector3:
 		away += dir_away * weight
 	return away
 
+## Répulsion des voisines situées devant [param forward], recalculée une frame physique
+## sur AVOID_CHECK_STEP et réutilisée entre deux calculs. Sert au walker (cap actuel)
+## et aux lignes droites de LEAVE / ENTER (direction de la cible) : une abeille n'utilise
+## que l'un des deux à la fois, le cache peut être partagé.
+func get_avoidance_cached(forward: Vector3) -> Vector3:
+	var frame := Engine.get_physics_frames()
+	if frame - _avoid_frame >= AVOID_CHECK_STEP:
+		_cached_away = get_avoidance(forward)
+		_avoid_frame = frame
+	return _cached_away
+
 # =============================================================================
 # Utilitaires internes
 # =============================================================================
@@ -200,11 +211,7 @@ func get_avoidance(forward: Vector3 = Vector3.ZERO) -> Vector3:
 ## Renvoie le facteur de freinage à appliquer (1 = aucune voisine, plus petit si proche).
 func _avoid_neighbours(normal: Vector3, delta: float) -> float:
 	# Recalcul seulement si le dernier date d'au moins AVOID_CHECK_STEP frames
-	var frame := Engine.get_physics_frames()
-	if frame - _avoid_frame >= AVOID_CHECK_STEP:
-		_cached_away = get_avoidance(heading)
-		_avoid_frame = frame
-	var away := _cached_away
+	var away := get_avoidance_cached(heading)
 	if away == Vector3.ZERO:
 		return 1.0
 	var urgency := minf(away.length(), 1.0)

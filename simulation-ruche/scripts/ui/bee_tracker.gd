@@ -16,6 +16,10 @@ const LOG_SIZE := 6
 ## Lissage de la vitesse mesurée (1/s) : évite les sauts d'une image à l'autre.
 const SPEED_SMOOTHING := 5.0
 
+## Intervalle (s) entre deux observations : des statistiques n'ont pas besoin
+## d'être relevées à chaque image physique.
+const OBSERVE_INTERVAL := 0.1
+
 # =============================================================================
 # Types
 # =============================================================================
@@ -69,6 +73,9 @@ var clock := 0.0
 ## comme type de valeur d'un dictionnaire typé.
 var _records: Dictionary = {}
 
+## Temps écoulé depuis la dernière observation.
+var _observe_accum := 0.0
+
 # =============================================================================
 # Cycle de vie
 # =============================================================================
@@ -82,6 +89,12 @@ func _physics_process(delta: float) -> void:
 	clock += delta
 	if bees_container == null:
 		return
+	_observe_accum += delta
+	if _observe_accum < OBSERVE_INTERVAL:
+		return
+	# La vitesse est mesurée sur tout l'intervalle écoulé
+	var dt := _observe_accum
+	_observe_accum = 0.0
 	for node in bees_container.get_children():
 		var bee := node as Bee
 		if bee == null or bee.current_state == null:
@@ -92,7 +105,7 @@ func _physics_process(delta: float) -> void:
 			# Transitions reçues au moment exact où elles ont lieu
 			bee.state_changed.connect(_on_state_changed)
 		else:
-			_observe(bee, rec, delta)
+			_observe(bee, rec, dt)
 
 # =============================================================================
 # Lecture (appelé par l'interface)
