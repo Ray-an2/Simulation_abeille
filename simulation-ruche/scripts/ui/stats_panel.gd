@@ -275,16 +275,22 @@ func _refresh() -> void:
 func _refresh_flowers(live: Dictionary) -> void:
 	var sim := simulation
 	var t := ""
+	# Même ordre pour les deux tableaux et la légende de la courbe : de la source
+	# la plus rentable par trajet à la moins rentable. La colonne Débit utile,
+	# qui ne suit pas cet ordre, montre alors d'un coup d'œil que l'attrait
+	# d'une source et ce qu'elle peut fournir sont deux choses différentes.
+	var by_attract := _species_sorted_by("rank_attract")
 
 	# Caractéristiques et prévision (fixes : calculées au lancement)
 	t += _title("Caractéristiques et prévision")
-	t += "[color=%s]Rentabilité calculée avec la formule des abeilles, pour un trajet seul : " % DIM_HEX
-	t += "jabot plein sur des fleurs pleines, sans concurrence. Débit max. : sucre que le massif "
-	t += "sécrète par heure simulée quand toutes ses fleurs sont vides (plafond de la récolte).[/color]\n\n"
-	t += "[table=8]"
+	t += "[color=%s]Rentabilité : formule des abeilles pour un trajet seul (jabot plein, " % DIM_HEX
+	t += "fleurs pleines, sans concurrence). Elle prédit l'ordre d'exploitation des sources. "
+	t += "Débit utile : sucre sécrété par heure simulée de jour par un massif exploité au maximum. "
+	t += "Il prédit la composition des réserves quand la colonie est limitée par l'offre.[/color]\n\n"
+	t += "[table=9]"
 	t += _header_row(["Espèce", "Fleurs", "Distance", "Sucre", "τ sécrétion",
-			"Rentabilité", "Rang prévu", "Débit max."])
-	for sp in _collector.species_list:
+			"Rentabilité", "Rang attractivité", "Débit utile", "Rang prévu"])
+	for sp in by_attract:
 		var p: Dictionary = _collector.predictions[sp]
 		t += _row([
 			_species_tag(sp),
@@ -293,8 +299,9 @@ func _refresh_flowers(live: Dictionary) -> void:
 			"%d %%" % roundi(p["concentration"] * 100.0),
 			"%.1f h" % p["tau"],
 			"%.2f" % p["profitability"],
+			str(p["rank_attract"]),
+			Units.mass(p["useful_sugar_rate"]) + "/h",
 			str(p["rank"]),
-			Units.mass(p["max_sugar_rate"]) + "/h",
 		])
 	t += "[/table]\n\n\n"
 
@@ -305,7 +312,7 @@ func _refresh_flowers(live: Dictionary) -> void:
 			"Butineuses", "Recrues en route", "Danses"])
 	var flowers: Dictionary = live["flowers"]
 	var max_res := maxf(sim.max_resource, 0.001)
-	for sp in _collector.species_list:
+	for sp in by_attract:
 		var f: Dictionary = flowers.get(sp, {"count": 0, "available": 0, "busy": 0, "empty": 0, "resource": 0.0})
 		var mean_fill: float = f["resource"] / maxf(f["count"], 1) / max_res
 		t += _row([
@@ -323,7 +330,7 @@ func _refresh_flowers(live: Dictionary) -> void:
 
 	# Courbe : abeilles qui connaissent une fleur de chaque espèce
 	var series: Array[Dictionary] = []
-	for sp in _collector.species_list:
+	for sp in by_attract:
 		var values := PackedFloat32Array()
 		for sample in _collector.samples:
 			values.append(sample["foragers"].get(sp, 0))
@@ -394,36 +401,41 @@ func _refresh_summary() -> void:
 	t += _title("Réserves de la ruche")
 	t += "Sucre %s · nectar %s\n" % [
 		Units.mass(hive.sugar_stock), Units.volume(hive.nectar_stock)]
-	t += "[color=%s]Part du sucre : énergie réellement rapportée. Dernière heure : régime actuel, " % DIM_HEX
-	t += "sans le démarrage (ordre de découverte des sources par les éclaireuses).[/color]\n\n"
+	t += "[color=%s]Part prévue : proportion du débit utile de chaque massif (onglet Fleurs). " % DIM_HEX
+	t += "Part du sucre : énergie réellement rapportée, depuis le lancement. Dernière heure : "
+	t += "régime actuel, sans le démarrage où domine la source la plus attractive (à lire de jour). "
+	t += "Exploitation : sucre récolté par heure de jour / débit utile ; proche de 100 %, "
+	t += "le massif est vidé au rythme où il sécrète.[/color]\n\n"
 
-	# Espèces dans l'ordre du rang prévu, pour comparer directement les deux rangs
-	var by_prediction: Array[int] = _collector.species_list.duplicate()
-	by_prediction.sort_custom(func(a: int, b: int) -> bool:
-		return _collector.predictions[a]["rank"] < _collector.predictions[b]["rank"])
+	# Espèces dans l'ordre du rang prévu (débit utile), pour comparer directement
+	# au rang observé
+	var by_prediction := _species_sorted_by("rank")
 	var observed_rank := _rank_by(sugar, by_prediction)
 
-	t += "[table=8]"
-	t += _header_row(["Espèce", "Rentabilité prévue", "Rang prévu", "Rang observé",
-			"Sucre stocké", "Part du sucre", "Part du volume", "Part, dernière heure"])
+	t += "[table=9]"
+	t += _header_row(["Espèce", "Rang attractivité", "Rang prévu", "Rang observé",
+			"Part prévue", "Part du sucre", "Part du volume", "Part, dernière heure", "Exploitation"])
 	for sp in by_prediction:
 		var p: Dictionary = _collector.predictions[sp]
 		var s: float = sugar.get(sp, 0.0)
+		var exploitation := _collector.exploitation(sp)
 		t += _row([
 			_species_tag(sp),
-			"%.2f" % p["profitability"],
+			str(p["rank_attract"]),
 			str(p["rank"]),
+			# En orange si le classement observé diffère du classement prévu par le débit
 			_highlight_if(observed_rank.get(sp, 0) != p["rank"], str(observed_rank.get(sp, "-"))),
-			Units.mass(s),
+			"%d %%" % roundi(p["predicted_share"] * 100.0),
 			_percent(s, total_sugar),
 			_percent(nectar.get(sp, 0.0), total_nectar),
 			_percent(recent.get(sp, 0.0), total_recent),
+			"-" if exploitation < 0.0 else "%d %%" % roundi(exploitation * 100.0),
 		])
 	# Nectar déposé sans espèce connue (ne devrait pas arriver) : affiché pour le repérer
 	if sugar.has(-1):
-		t += _row([_species_tag(-1), "-", "-", "-", Units.mass(sugar[-1]),
+		t += _row([_species_tag(-1), "-", "-", "-", "-",
 				_percent(sugar[-1], total_sugar), _percent(nectar.get(-1, 0.0), total_nectar),
-				_percent(recent.get(-1, 0.0), total_recent)])
+				_percent(recent.get(-1, 0.0), total_recent), "-"])
 	t += "[/table]"
 	_summary_text.text = t
 
@@ -441,6 +453,15 @@ func _refresh_summary() -> void:
 # =============================================================================
 # Utilitaires
 # =============================================================================
+
+## Espèces de la scène triées par rang croissant (1 en premier).
+## [param rank_key] : "rank_attract" (rentabilité d'un trajet) ou "rank" (débit utile).
+func _species_sorted_by(rank_key: String) -> Array[int]:
+	var sorted: Array[int] = _collector.species_list.duplicate()
+	sorted.sort_custom(func(a: int, b: int) -> bool:
+		return _collector.predictions[a][rank_key] < _collector.predictions[b][rank_key])
+	return sorted
+
 
 ## Abscisses des courbes : heure simulée de chaque relevé.
 func _sample_hours() -> PackedFloat32Array:

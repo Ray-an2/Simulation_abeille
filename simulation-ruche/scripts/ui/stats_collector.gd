@@ -5,9 +5,12 @@ class_name StatsCollector extends Node
 ## Ce n'est pas un agent : il voit tout, mais aucune abeille ne lit ses données.
 ## Les abeilles restent non omniscientes ; seul l'observateur humain a la vue d'ensemble.
 ##
-## Il calcule aussi, une fois au lancement, une prévision par espèce avec les
-## mêmes formules que les abeilles (Bee.trip_efficiency) : c'est la référence
-## à laquelle comparer la composition réelle des réserves.
+## Il calcule aussi, une fois au lancement, deux prévisions par espèce
+## (voir _compute_predictions) :
+##   - l'attractivité d'un trajet, avec la formule des abeilles : elle prédit
+##     l'ordre dans lequel les sources sont exploitées ;
+##   - le débit utile du massif (sécrétion) : il prédit la composition des
+##     réserves une fois la colonie limitée par l'offre.
 ##
 ## Créé par StatsPanel : rien à ajouter dans la scène.
 
@@ -46,6 +49,13 @@ var predictions: Dictionary = {}
 ## connaissent une fleur de cette espèce), sugar (espèce → sucre stocké, mg),
 ## outside (abeilles dehors), dances (danses frétillantes), receivers (receveuses).
 var samples: Array[Dictionary] = []
+
+## Heures simulées de jour écoulées depuis le premier sucre stocké, et sucre (mg)
+## stocké par espèce pendant ces heures-là. Servent au taux d'exploitation de chaque
+## massif (exploitation()). Le compte ne démarre qu'au premier sucre : sinon,
+## les heures passées à chercher les sources tireraient le taux vers le bas.
+var harvest_day_hours := 0.0
+var day_sugar: Dictionary = {}
 
 ## Heure simulée du prochain relevé.
 var _next_sample_hour := 0.0
@@ -91,26 +101,43 @@ func _try_initialize() -> void:
 # Prévision
 # =============================================================================
 
-## Pour chaque espèce, ce que les abeilles devraient en penser, calculé avec
-## leurs propres formules sur un trajet « idéal » :
-##   - distance : moyenne des distances à plat ruche → fleurs de l'espèce ;
-##   - jabot plein (forage_capacity), rempli sur des fleurs pleines, une visite
-##     par fleur (harvest_amount par prélèvement) ;
-##   - durée de prélèvement moyenne, allongée par la viscosité du nectar ;
-##   - vols entre fleurs ignorés (même biais pour toutes les espèces).
-## C'est une borne optimiste sans concurrence ni épuisement : elle classe
-## l'attrait de chaque source pour une abeille seule.
+## Deux prévisions par espèce, qui ne disent pas la même chose.
 ##
-## Le débit maximal de sécrétion du massif dit au contraire combien de sucre
-## l'espèce peut fournir à la colonie : stock vide, la sécrétion vaut
-## max_resource / tau par fleur et par heure simulée (modèle de Flower._secrete).
-## Une source attrayante mais à faible débit doit saturer vite (boucle d'épuisement).
+## 1. Attractivité (rank_attract) : rentabilité d'un trajet isolé, calculée avec
+##    la formule des abeilles sur un trajet « idéal » :
+##      - distance : moyenne des distances à plat ruche → fleurs de l'espèce ;
+##      - jabot plein (forage_capacity), rempli sur des fleurs pleines, une visite
+##        par fleur (harvest_amount par prélèvement) ;
+##      - durée de prélèvement moyenne, allongée par la viscosité du nectar ;
+##      - vols entre fleurs ignorés (même biais pour toutes les espèces).
+##    Ni la sécrétion ni le nombre de fleurs n'y entrent : elle classe ce qui
+##    attire une abeille seule, donc l'ordre dans lequel les sources sont
+##    exploitées et annoncées au début (boucle de recrutement).
+##
+## 2. Débit utile (rank) : sucre qu'un massif exploité au maximum fournit par
+##    heure simulée de jour. Quand les butineuses sont nombreuses, chaque massif
+##    est vidé au rythme où il sécrète (boucle d'épuisement) : c'est ce débit,
+##    et non l'attractivité, qui fixe la part de chaque espèce dans les réserves.
+##    C'est donc la prévision à comparer à la composition observée.
+##    Modèle de Flower._secrete : dR/dt = (max_resource - R) / tau, par fleur.
+##    Un massif exploité au maximum a ses fleurs entre threshold (fermeture) et
+##    reopen_level (réouverture) : on prend le milieu comme stock moyen.
+##    Approximation commune à toutes les espèces : elle change les débits,
+##    pas leurs proportions ni leur classement.
+##    Une espèce dont la rentabilité idéale est déjà sous profitability_low serait
+##    abandonnée par les abeilles : son débit utile est compté nul.
+##
+## Part prévue (predicted_share) : débit utile de l'espèce / somme des débits utiles.
+## Elle suppose la colonie limitée par l'offre sur tous les massifs ; si une espèce
+## reste sous-exploitée (taux d'exploitation bas), sa part réelle sera plus faible.
 func _compute_predictions() -> void:
 	var sim := simulation
 	var hive_pos := sim.hive.global_position
 	# trip_efficiency ne dépend que des paramètres de la simulation :
 	# n'importe quelle abeille peut faire le calcul, on prend la première
 	var any_bee := sim.bees_container.get_child(0) as Bee
+	# Stock moyen d'une fleur dans un massif exploité au maximum (voir plus haut)
+	var mean_stock: float = 0.5 * (sim.threshold + sim.reopen_level)
 
 	for sp in species_list:
 		var count := 0
@@ -124,7 +151,7 @@ func _compute_predictions() -> void:
 			reference = flower
 		var distance := distance_sum / maxi(count, 1)
 
-		# Trajet idéal : jabot plein, prélèvements de durée moyenne
+		# 1. Attractivité : trajet idéal, jabot plein, prélèvements de durée moyenne
 		var c := reference.sugar_concentration
 		var capacity: float = sim.forage_capacity
 		var harvests := ceili(capacity / maxf(sim.harvest_amount, 0.001))
@@ -135,9 +162,16 @@ func _compute_predictions() -> void:
 		var efficiency: float = 0.0
 		if any_bee != null:
 			efficiency = any_bee.trip_efficiency(sugar, load, distance, harvests * harvest_time)
+		var profitability := _to_profitability(efficiency)
 
-		# Débit maximal du massif (µL par heure simulée), converti en sucre
-		var max_volume_rate: float = count * sim.max_resource / maxf(reference.secretion_tau, 0.001)
+		# 2. Débit utile : sécrétion de toutes les fleurs du massif au stock moyen,
+		# en µL par heure simulée, puis converti en sucre (mg/h)
+		var tau := maxf(reference.secretion_tau, 0.001)
+		var volume_rate: float = count * maxf(sim.max_resource - mean_stock, 0.0) / tau
+		var useful_rate := Flower.sugar_in(volume_rate, c)
+		# Source abandonnée par les abeilles dès le premier trajet : rien ne rentre
+		if profitability < sim.profitability_low:
+			useful_rate = 0.0
 
 		predictions[sp] = {
 			"flowers": count,
@@ -145,16 +179,31 @@ func _compute_predictions() -> void:
 			"concentration": c,
 			"tau": reference.secretion_tau,
 			"efficiency": efficiency,
-			"profitability": _to_profitability(efficiency),
-			"max_sugar_rate": Flower.sugar_in(max_volume_rate, c),
+			"profitability": profitability,
+			"useful_sugar_rate": useful_rate,
 		}
 
-	# Rang prévu : 1 = source la plus rentable par trajet
+	# Part prévue dans les réserves : proportion du débit utile total
+	var total_rate := 0.0
+	for sp in species_list:
+		total_rate += predictions[sp]["useful_sugar_rate"]
+	for sp in species_list:
+		predictions[sp]["predicted_share"] = \
+				predictions[sp]["useful_sugar_rate"] / total_rate if total_rate > 0.0 else 0.0
+
+	# Rangs : 1 = la plus attractive par trajet / le plus fort débit utile
+	_assign_rank("rank_attract", "profitability")
+	_assign_rank("rank", "useful_sugar_rate")
+
+
+## Range les espèces par valeur décroissante de predictions[sp][value_key]
+## et écrit le rang (1 = la plus grande) dans predictions[sp][rank_key].
+func _assign_rank(rank_key: String, value_key: String) -> void:
 	var ranked: Array[int] = species_list.duplicate()
 	ranked.sort_custom(func(a: int, b: int) -> bool:
-		return predictions[a]["profitability"] > predictions[b]["profitability"])
+		return predictions[a][value_key] > predictions[b][value_key])
 	for i in ranked.size():
-		predictions[ranked[i]]["rank"] = i + 1
+		predictions[ranked[i]][rank_key] = i + 1
 
 
 ## Même conversion que UnloadState._efficiency_to_profitability (échelle logarithmique,
@@ -186,6 +235,8 @@ func _take_sample() -> void:
 			var sp: int = bee.known_flower.species
 			foragers[sp] = foragers.get(sp, 0) + 1
 
+	_accumulate_day_harvest()
+
 	samples.append({
 		"hour": simulation.sim_hours,
 		"foragers": foragers,
@@ -197,6 +248,36 @@ func _take_sample() -> void:
 	})
 	if samples.size() > max_samples:
 		samples.pop_front()
+
+
+## Ajoute à harvest_day_hours et day_sugar l'intervalle écoulé depuis le relevé
+## précédent, s'il fait jour et que la récolte a commencé. Le sucre déposé la nuit
+## par les dernières butineuses rentrées est ignoré : légère sous-estimation,
+## identique pour toutes les espèces. Appelé avant l'ajout du nouveau relevé.
+func _accumulate_day_harvest() -> void:
+	if samples.is_empty() or not simulation.is_daytime():
+		return
+	var previous: Dictionary = samples[samples.size() - 1]
+	var previous_sugar: Dictionary = previous["sugar"]
+	if previous_sugar.is_empty():
+		return   # rien n'est encore entré dans les réserves
+	harvest_day_hours += simulation.sim_hours - previous["hour"]
+	var now: Dictionary = simulation.hive.sugar_by_species
+	for sp in now:
+		day_sugar[sp] = day_sugar.get(sp, 0.0) + now[sp] - previous_sugar.get(sp, 0.0)
+
+
+## Taux d'exploitation du massif de [param sp] : sucre récolté par heure de jour,
+## divisé par son débit utile. Proche de 1 : le massif est vidé au rythme où il
+## sécrète (limité par l'offre). Nettement sous 1 : les abeilles le délaissent
+## au profit d'autres sources. Peut dépasser 1 au début, quand les fleurs encore
+## pleines livrent leur stock initial. Renvoie -1 tant qu'aucune heure de récolte
+## n'a été comptée, ou si le débit utile est nul.
+func exploitation(sp: int) -> float:
+	var useful: float = predictions[sp]["useful_sugar_rate"]
+	if harvest_day_hours <= 0.0 or useful <= 0.0:
+		return -1.0
+	return day_sugar.get(sp, 0.0) / harvest_day_hours / useful
 
 # =============================================================================
 # Lecture instantanée (appelé par StatsPanel à chaque rafraîchissement)
